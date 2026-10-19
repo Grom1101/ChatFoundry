@@ -1,0 +1,392 @@
+@page "/settings/channels"
+@page "/channels"
+@layout SettingsLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+@inject BlazorClient.Interfaces.IWorkflowApiClient ApiClient
+@inject IJSRuntime JsRuntime
+@inject IStringLocalizer<Channels> LChannels
+
+<PageTitle>@LChannels["PageTitle"]</PageTitle>
+
+<div class="settings-page-header">
+    <div>
+        <h1 class="settings-page-title">@LChannels["HeaderTitle"]</h1>
+        <p class="settings-page-subtitle">@LChannels["HeaderSubtitle"]</p>
+    </div>
+    <button class="settings-btn-primary" @onclick="OpenCreateModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        @LChannels["AddChannel"]
+    </button>
+</div>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="settings-alert settings-alert-danger">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <span>@error</span>
+        <button class="ch-alert-close" @onclick="() => error = null">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
+}
+
+@if (isLoading)
+{
+    <div class="settings-spinner-wrap">
+        <div class="settings-spinner"></div>
+    </div>
+}
+else if (!channels.Any())
+{
+    <div class="settings-empty-state">
+        <div class="settings-empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </div>
+        <div class="settings-empty-title">@LChannels["EmptyTitle"]</div>
+        <div class="settings-empty-desc">@LChannels["EmptyDesc"]</div>
+        <button class="settings-btn-primary" @onclick="OpenCreateModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            @LChannels["AddChannel"]
+        </button>
+    </div>
+}
+else
+{
+    <div class="ch-grid">
+        @foreach (var ch in channels)
+        {
+            <div class="ch-card">
+                <div class="ch-card-header">
+                    <div class="ch-card-icon ch-card-icon--@(ch.ChannelType?.ToLowerInvariant() ?? "default")">
+                        @switch (ch.ChannelType?.ToUpperInvariant())
+                        {
+                            case "TELEGRAM":
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                break;
+                            case "WEB":
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                                break;
+                            case "WHATSAPP":
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+                                break;
+                            case "SMS":
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                break;
+                            default:
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                                break;
+                        }
+                    </div>
+                    <div class="ch-card-actions">
+                        <button class="settings-icon-btn" @onclick="() => RefreshWebhook(ch)" disabled="@(refreshingChannelId == ch.Id)" title="@LChannels["TooltipRefreshWebhook"]">
+                            @if (refreshingChannelId == ch.Id)
+                            {
+                                <div class="settings-spinner" style="width:14px;height:14px;border-width:2px;"></div>
+                            }
+                            else
+                            {
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                            }
+                        </button>
+                        <button class="settings-icon-btn" @onclick="() => OpenEditModal(ch)" title="@LChannels["TooltipEdit"]">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="settings-icon-btn settings-icon-btn-danger" @onclick="() => DeleteChannel(ch)" title="@LChannels["TooltipDelete"]">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="ch-card-body" style="@(ch.ChannelType?.ToUpperInvariant() == "TELEGRAM" ? "padding-bottom: 1.25rem;" : "")">
+                    <div class="ch-card-name">@ch.Name</div>
+                    <div class="ch-card-type">@ChannelTypeDisplayName(ch.ChannelType)</div>
+                </div>
+                @if (ch.ChannelType?.ToUpperInvariant() != "TELEGRAM")
+                {
+                    <div class="ch-card-footer">
+                        <code class="ch-card-token">@ch.MaskedToken</code>
+                        @if (ch.ChannelType?.ToUpperInvariant() == "SMS")
+                        {
+                            <div class="ch-card-webhook" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px;">
+                                <code style="font-size: 0.75rem; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;" title="@GetWebhookUrl(ch.Id)">@GetWebhookUrl(ch.Id)</code>
+                                <button class="settings-icon-btn" style="padding: 2px; border: none; background: none; cursor: pointer; color: #64748b;" @onclick="() => CopyToClipboard(GetWebhookUrl(ch.Id))" title="Copy Webhook URL">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (showModal)
+{
+    <div class="settings-modal-backdrop" @onclick="CloseModal"></div>
+    <div class="settings-modal">
+        <div class="settings-modal-header">
+            <h3 class="settings-modal-title">@(isEditMode ? LChannels["EditChannelModalTitle"] : LChannels["NewChannelModalTitle"])</h3>
+            <button class="settings-modal-close" @onclick="CloseModal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-modal-body">
+            <div class="settings-field">
+                <label class="settings-label">@LChannels["FieldName"]</label>
+                <input type="text" class="settings-input" @bind="currentName" placeholder="@LChannels["FieldNamePlaceholder"]" />
+            </div>
+            @if (currentChannelType == "SMS")
+            {
+                <div class="settings-field">
+                    <label class="settings-label">Номер телефона отправителя</label>
+                    <input type="text" class="settings-input" style="font-family: 'Courier New', monospace;" @bind="currentSmsPhone" placeholder="@(isEditMode ? "Оставьте пустым, чтобы не менять" : "+3333333333333")" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">API Key</label>
+                    <input type="text" class="settings-input" style="font-family: 'Courier New', monospace;" @bind="currentSmsApiKey" placeholder="@(isEditMode ? "Оставьте пустым, чтобы не менять" : "Введите API-ключ")" />
+                </div>
+            }
+            else
+            {
+                <div class="settings-field">
+                    <label class="settings-label">@LChannels["FieldToken"]</label>
+                    <input type="text" class="settings-input" style="font-family: 'Courier New', monospace;" @bind="currentToken" placeholder="@(isEditMode ? LChannels["FieldTokenPlaceholderEdit"] : LChannels["FieldTokenPlaceholderNew"])" />
+                    @if (isEditMode)
+                    {
+                        <div class="settings-hint">@LChannels["FieldTokenHint"]</div>
+                    }
+                </div>
+            }
+            <div class="settings-field">
+                <label class="settings-label">@LChannels["FieldChannelType"]</label>
+                @if (isEditMode)
+                {
+                    <div class="settings-readonly-value">@ChannelTypeDisplayName(currentChannelType)</div>
+                }
+                else
+                {
+                    <select class="settings-select" @bind="currentChannelType">
+                        <option value="TELEGRAM">Telegram</option>
+                        <option value="SMS">SMS</option>
+                    </select>
+                }
+            </div>
+        </div>
+        <div class="settings-modal-footer">
+            <button class="settings-btn-secondary" @onclick="CloseModal">@LChannels["CancelBtn"]</button>
+            <button class="settings-btn-primary" @onclick="SaveChannel" disabled="@(isSaving || string.IsNullOrWhiteSpace(currentName) || (!isEditMode && IsTokenInvalid()))">
+                @if (isSaving) { <div class="settings-spinner" style="width:16px;height:16px;border-width:2px;"></div> }
+                @LChannels["SaveBtn"]
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ChannelDto> channels = new();
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? error;
+
+    private bool showModal;
+    private bool isEditMode;
+    private Guid? editChannelId;
+    private string currentName = "";
+    private string currentToken = "";
+    private string currentSmsPhone = "";
+    private string currentSmsApiKey = "";
+    private string currentChannelType = "TELEGRAM";
+    private Guid? refreshingChannelId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadChannels();
+    }
+
+    private async Task LoadChannels()
+    {
+        isLoading = true;
+        error = null;
+        try
+        {
+            channels = await ApiClient.GetChannelsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = string.Format(LChannels["LoadError"], ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private bool IsTokenInvalid()
+    {
+        if (currentChannelType == "SMS")
+        {
+            return string.IsNullOrWhiteSpace(currentSmsPhone) || string.IsNullOrWhiteSpace(currentSmsApiKey);
+        }
+        return string.IsNullOrWhiteSpace(currentToken);
+    }
+
+    private async Task SaveChannel()
+    {
+        if (string.IsNullOrWhiteSpace(currentName))
+            return;
+        if (!isEditMode && IsTokenInvalid())
+            return;
+
+        if (currentChannelType == "SMS")
+        {
+            if (isEditMode)
+            {
+                if (!string.IsNullOrWhiteSpace(currentSmsPhone) || !string.IsNullOrWhiteSpace(currentSmsApiKey))
+                {
+                    if (string.IsNullOrWhiteSpace(currentSmsPhone) || string.IsNullOrWhiteSpace(currentSmsApiKey))
+                    {
+                        error = "Для обновления SMS-канала необходимо указать и номер телефона, и API Key.";
+                        return;
+                    }
+                    currentToken = $"{currentSmsPhone.Trim()};{currentSmsApiKey.Trim()}";
+                }
+                else
+                {
+                    currentToken = "";
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(currentSmsPhone) || string.IsNullOrWhiteSpace(currentSmsApiKey))
+                {
+                    error = "Необходимо указать номер телефона и API Key.";
+                    return;
+                }
+                currentToken = $"{currentSmsPhone.Trim()};{currentSmsApiKey.Trim()}";
+            }
+        }
+
+        isSaving = true;
+        error = null;
+        try
+        {
+            if (isEditMode && editChannelId.HasValue)
+            {
+                await ApiClient.UpdateChannelAsync(editChannelId.Value, currentName.Trim(), string.IsNullOrWhiteSpace(currentToken) ? null : currentToken.Trim(), currentChannelType);
+            }
+            else
+            {
+                await ApiClient.AddChannelAsync(currentName.Trim(), currentToken.Trim(), currentChannelType);
+            }
+            CloseModal();
+            await LoadChannels();
+        }
+        catch (Exception ex)
+        {
+            error = string.Format(LChannels["SaveError"], ex.Message);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task RefreshWebhook(ChannelDto ch)
+    {
+        refreshingChannelId = ch.Id;
+        error = null;
+        try
+        {
+            await ApiClient.RefreshChannelWebhookAsync(ch.Id);
+        }
+        catch (Exception ex)
+        {
+            error = string.Format(LChannels["WebhookError"], ex.Message);
+        }
+        finally
+        {
+            refreshingChannelId = null;
+        }
+    }
+
+    private async Task DeleteChannel(ChannelDto ch)
+    {
+        if (!await JsRuntime.InvokeAsync<bool>("confirm", string.Format(LChannels["DeleteConfirmPrompt"], ch.Name)))
+            return;
+
+        error = null;
+        try
+        {
+            await ApiClient.DeleteChannelAsync(ch.Id);
+            await LoadChannels();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        editChannelId = null;
+        isEditMode = false;
+        currentName = "";
+        currentToken = "";
+        currentSmsPhone = "";
+        currentSmsApiKey = "";
+        currentChannelType = "TELEGRAM";
+        showModal = true;
+    }
+
+    private void OpenEditModal(ChannelDto ch)
+    {
+        editChannelId = ch.Id;
+        isEditMode = true;
+        currentName = ch.Name;
+        currentToken = "";
+        currentSmsPhone = "";
+        currentSmsApiKey = "";
+        currentChannelType = ch.ChannelType ?? "TELEGRAM";
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        error = null;
+    }
+
+    private static string ChannelTypeDisplayName(string? channelType)
+    {
+        return channelType switch
+        {
+            "TELEGRAM" => "Telegram",
+            "WEB" => "Web",
+            "WHATSAPP" => "WhatsApp",
+            "API" => "Api",
+            "EMAIL" => "Email",
+            "SMS" => "SMS",
+            _ => channelType ?? "—"
+        };
+    }
+
+    private string GetWebhookUrl(Guid channelId)
+    {
+        var baseApi = BlazorClient.Configuration.ApiEndpoints.Api;
+        return $"{baseApi}/sms/hook/{channelId}";
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        }
+        catch (Exception ex)
+        {
+            error = "Не удалось скопировать в буфер обмена: " + ex.Message;
+        }
+    }
+}

@@ -1,0 +1,228 @@
+@page "/login"
+@using BlazorClient.Auth
+@using Blazored.LocalStorage
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILocalStorageService LocalStorage
+@inject IStringLocalizer<Login> LLogin
+
+<PageTitle>@LLogin["PageTitle"] — ChatFoundry</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <!-- Logo -->
+        <div class="login-logo">
+            <svg width="40" height="40" viewBox="0 0 28 28" fill="none">
+                <rect width="28" height="28" rx="7" fill="url(#login-grad)"/>
+                <path d="M8 10.5C8 9.67 8.67 9 9.5 9H18.5C19.33 9 20 9.67 20 10.5V16.5C20 17.33 19.33 18 18.5 18H13L10 21V18H9.5C8.67 18 8 17.33 8 16.5V10.5Z" fill="white" opacity="0.95"/>
+                <circle cx="12" cy="13.5" r="1" fill="url(#login-grad)"/>
+                <circle cx="16" cy="13.5" r="1" fill="url(#login-grad)"/>
+                <defs>
+                    <linearGradient id="login-grad" x1="0" y1="0" x2="28" y2="28">
+                        <stop offset="0%" stop-color="#6366f1"/>
+                        <stop offset="100%" stop-color="#8b5cf6"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+
+        <h1 class="login-title">@LLogin["Title"]</h1>
+        <p class="login-subtitle">@LLogin["Subtitle"]</p>
+
+        @if (showConfirmedMessage)
+        {
+            <div class="login-error" style="background: #ecfdf5; border-color: #10b981; color: #065f46;">
+                <span>@LLogin["ConfirmedMessage"]</span>
+            </div>
+        }
+
+        <!-- Error -->
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="login-error">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                <span>@error</span>
+            </div>
+            @if (showResendButton)
+            {
+                <div class="login-resend-wrap">
+                    <button type="button" class="login-resend-link" @onclick="ResendConfirmation" disabled="@resendSent">
+                        @if (resendSent) { <span>@LLogin["EmailSent"]</span> } else { <span>@LLogin["ResendEmail"]</span> }
+                    </button>
+                </div>
+            }
+        }
+
+        <!-- Form -->
+        <div class="login-form">
+            <div class="login-field">
+                <label class="login-label" for="email">@LLogin["LabelEmail"]</label>
+                <div class="login-input-wrap">
+                    <svg class="login-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                        <path d="M22 7l-10 6L2 7"/>
+                    </svg>
+                    <input id="email"
+                           type="email"
+                           class="login-input"
+                           placeholder="you@example.com"
+                           @bind="email"
+                           @onkeydown="OnKeyDown" />
+                </div>
+            </div>
+
+            <div class="login-field">
+                <label class="login-label" for="password">@LLogin["LabelPassword"]</label>
+                <div class="login-input-wrap">
+                    <svg class="login-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2"/>
+                        <path d="M7 11V7a5 5 0 0110 0v4"/>
+                    </svg>
+                    <input id="password"
+                           type="password"
+                           class="login-input"
+                           placeholder="@LLogin["PlaceholderPassword"]"
+                           @bind="password"
+                           @onkeydown="OnKeyDown" />
+                </div>
+                <div class="login-resend-wrap" style="margin-top: 6px;">
+                    <a href="/forgot-password" class="login-resend-link" style="text-decoration: underline;">@LLogin["ForgotPassword"]</a>
+                </div>
+            </div>
+
+            <button class="login-btn" @onclick="HandleLogin" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="login-spinner"></span>
+                }
+                else
+                {
+                    <span>@LLogin["BtnSignIn"]</span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-left: 6px;">
+                        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                }
+            </button>
+        </div>
+
+        <div class="login-footer">
+            <span>@LLogin["NoAccount"]</span>
+            <a href="/register">@LLogin["SignUp"]</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string email = "bob@example.com";
+    private string password = "Pass123!";
+    private string? error;
+    private bool isLoading;
+    private bool showResendButton;
+    private bool resendSent;
+    private bool showConfirmedMessage;
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.Uri;
+        showConfirmedMessage = uri.Contains("confirmed=1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ResendConfirmation()
+    {
+        if (string.IsNullOrWhiteSpace(email)) return;
+        try
+        {
+            await Http.PostAsJsonAsync($"{ApiEndpoints.Api}/identity/auth/resend-confirmation", new { email = email.Trim() });
+            resendSent = true;
+        }
+        catch {  }
+    }
+
+    private async Task HandleLogin()
+    {
+        error = null;
+        showResendButton = false;
+        isLoading = true;
+
+        var requestBody = new FormUrlEncodedContent(new[]
+        {
+            new KeyValuePair<string, string>("grant_type", "password"),
+            new KeyValuePair<string, string>("username", email),
+            new KeyValuePair<string, string>("password", password),
+            new KeyValuePair<string, string>("client_id", "client"),
+            new KeyValuePair<string, string>("client_secret", "secret"),
+            new KeyValuePair<string, string>("scope", ApiEndpoints.OAuthScopes),
+        });
+
+        try
+        {
+            var response = await Http.PostAsync($"{ApiEndpoints.Api}/identity/connect/token", requestBody);
+            if (response.IsSuccessStatusCode)
+            {
+                var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
+                await LocalStorage.SetItemAsync("authToken", tokenResponse!.AccessToken);
+                if (!string.IsNullOrEmpty(tokenResponse.RefreshToken))
+                    await LocalStorage.SetItemAsync("refreshToken", tokenResponse.RefreshToken);
+                var emailToStore = email.Trim();
+                await LocalStorage.SetItemAsync("userEmail", emailToStore);
+                ((ApiAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsAuthenticated(tokenResponse.AccessToken, emailToStore);
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errJson = System.Text.Json.JsonSerializer.Deserialize<TokenErrorResponse>(body);
+                    if (errJson?.Error == "email_not_confirmed")
+                    {
+                        error = errJson.ErrorDescription ?? LLogin["EmailNotConfirmed"];
+                        showResendButton = true;
+                    }
+                    else
+                    {
+                        error = errJson?.ErrorDescription ?? (string.IsNullOrWhiteSpace(body) ? LLogin["AuthError"] : body);
+                    }
+                }
+                catch
+                {
+                    error = string.IsNullOrWhiteSpace(body)
+                        ? LLogin["AuthError"]
+                        : body;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            error = LLogin["ConnectionError"];
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await HandleLogin();
+        }
+    }
+
+    private class TokenErrorResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string? Error { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("error_description")]
+        public string? ErrorDescription { get; set; }
+    }
+}

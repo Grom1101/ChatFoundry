@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option csharp_namespace = "Workflow.Grpc";
+
+package workflow;
+
+service BotTokenService {
+  rpc GetTokenByChannelId (GetTokenByChannelIdRequest) returns (GetTokenResponse);
+  rpc GetCompanyIdByChannelId (GetTokenByChannelIdRequest) returns (GetCompanyIdByChannelIdResponse);
+}
+
+message GetTokenByChannelIdRequest {
+  string channel_id = 1;
+}
+
+message GetTokenResponse {
+  string token = 1;
+  string company_id = 2;  // optional, UUID of the channel's company
+}
+
+message GetCompanyIdByChannelIdResponse {
+  string company_id = 1;  // optional
+}

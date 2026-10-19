@@ -1,0 +1,253 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Services Up",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "up{job=~\"gateway|workflow-service|client-service|identity-service|telegram-service|file-service|company-service|billing-service|notification-service|scheduler-service\"}",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "title": "Active HTTP Requests",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(http_server_active_requests{service=~\"$service\"})",
+          "legendFormat": "In-Flight Requests"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] }
+        }
+      }
+    },
+    {
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service=~\"$service\"}[1m])) by (service)",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Request Duration p95 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service=~\"$service\"}[1m])) by (le, service)) * 1000",
+          "legendFormat": "{{service}} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Request Duration p99 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service=~\"$service\"}[1m])) by (le, service)) * 1000",
+          "legendFormat": "{{service}} p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Error Rate (5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service=~\"$service\", http_response_status_code=~\"5..\"}[1m])) by (service)",
+          "legendFormat": "{{service}} 5xx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 }, "color": { "mode": "palette-classic" } }
+      }
+    },
+    {
+      "title": "Process CPU Usage (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum(rate(dotnet_process_cpu_time_seconds_total{service=~\"$service\"}[1m])) by (service) * 100",
+          "legendFormat": "{{service}} CPU"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Process Memory Working Set (MB)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "dotnet_process_memory_working_set_bytes{service=~\"$service\"} / 1024 / 1024",
+          "legendFormat": "{{service}} RAM"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "decmbytes", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "GC Heap Size (MB)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum(dotnet_gc_last_collection_heap_size_bytes{service=~\"$service\"}) by (service) / 1024 / 1024",
+          "legendFormat": "{{service}} GC Heap"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "decmbytes", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Kafka / MassTransit Message Rate (msg/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "sum(rate(messaging_masstransit_receive_ea_total{service=~\"$service\"}[1m])) by (messaging_masstransit_destination)",
+          "legendFormat": "Queue: {{messaging_masstransit_destination}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Kafka / MassTransit Active In-Flight Messages",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum(messaging_masstransit_receive_active_ea_total{service=~\"$service\"}) by (messaging_masstransit_destination)",
+          "legendFormat": "Active: {{messaging_masstransit_destination}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "ThreadPool Queue Length & Thread Count",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "targets": [
+        {
+          "expr": "dotnet_thread_pool_queue_length_total{service=~\"$service\"}",
+          "legendFormat": "{{service}} Queue Length"
+        },
+        {
+          "expr": "dotnet_thread_pool_thread_count_total{service=~\"$service\"}",
+          "legendFormat": "{{service}} Worker Threads"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+      }
+    },
+    {
+      "title": "Exceptions Rate (errors/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "expr": "sum(rate(dotnet_exceptions_total{service=~\"$service\"}[1m])) by (error_type)",
+          "legendFormat": "{{error_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Consumer Execution Time - Average (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "expr": "sum by (messaging_masstransit_consumer_type) (rate(messaging_masstransit_consume_duration_milliseconds_sum{service=~\"$service\"}[1m])) / sum by (messaging_masstransit_consumer_type) (rate(messaging_masstransit_consume_duration_milliseconds_count{service=~\"$service\"}[1m]) > 0)",
+          "legendFormat": "{{messaging_masstransit_consumer_type}} avg"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    },
+    {
+      "title": "Consumer Execution Time - p95 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(messaging_masstransit_consume_duration_milliseconds_bucket{service=~\"$service\"}[1m])) by (le, messaging_masstransit_consumer_type))",
+          "legendFormat": "{{messaging_masstransit_consumer_type}} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["chatfoundry", "overview"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "query": "label_values(service)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "title": "ChatFoundry Overview",
+  "uid": "chatfoundry-overview",
+  "version": 4
+}

@@ -1,0 +1,249 @@
+services:
+  # ==========================================
+  # 1. Инфраструктура
+  # ==========================================
+  postgres:
+    image: postgres:16
+    container_name: loadtest_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: foundry_db
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: foundry
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-lite-db.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+      - ../tests/load-tests/seed/seed-data.sql:/docker-entrypoint-initdb.d/02-seed-data.sql:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    networks:
+      - loadtest_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundry -d foundry_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: loadtest_redis
+    restart: always
+    ports:
+      - "6380:6379"
+    command: ["redis-server", "--appendonly", "no"]
+    networks:
+      - loadtest_network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: loadtest_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - loadtest_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: loadtest_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - loadtest_network
+
+  # ==========================================
+  # 2. Мок Telegram API
+  # ==========================================
+  telegram-mock:
+    container_name: loadtest_telegram_mock
+    build:
+      context: ..
+      dockerfile: tests/Mocks/TelegramMock/Dockerfile
+    ports:
+      - "8085:8080"
+    networks:
+      - loadtest_network
+
+  # ==========================================
+  # 3. Сервисы системы ChatFoundry
+  # ==========================================
+  workflow-service:
+    container_name: loadtest_workflow_service
+    build:
+      context: ..
+      dockerfile: services/WorkflowService/src/WorkflowService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_workflow;Username=foundry;Password=foundry
+      - ConnectionStrings__Kafka=kafka:9092
+      - CacheSettings__Host=redis
+      - CacheSettings__Port=6379
+      - Services__ClientServiceUrl=http://client-service:8081
+      - Billing__Enabled=false
+    ports:
+      - "5010:8080"
+      - "5011:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      - loadtest_network
+
+  client-service:
+    container_name: loadtest_client_service
+    build:
+      context: ..
+      dockerfile: services/ClientService/src/ClientService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_client;Username=foundry;Password=foundry
+      - ConnectionStrings__Kafka=kafka:9092
+      - CacheSettings__Host=redis
+      - CacheSettings__Port=6379
+      - Services__WorkflowServiceUrl=http://workflow-service:8081
+      - Billing__Enabled=false
+    ports:
+      - "5030:8080"
+      - "5031:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      - loadtest_network
+
+  telegram-service:
+    container_name: loadtest_telegram_service
+    build:
+      context: ..
+      dockerfile: services/TelegramService/src/TelegramService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Kafka=kafka:9092
+      - CacheSettings__Host=redis
+      - CacheSettings__Port=6379
+      - Services__WorkflowServiceUrl=http://workflow-service:8081
+      - Telegram__BaseUrl=http://telegram-mock:8080
+      - Gateway__Url=http://telegram-service:8080
+    ports:
+      - "5040:8080"
+    depends_on:
+      - telegram-mock
+      - kafka
+      - redis
+      - workflow-service
+    networks:
+      - loadtest_network
+
+  # ==========================================
+  # 4. Раннер k6
+  # ==========================================
+  k6:
+    image: grafana/k6:latest
+    container_name: loadtest_k6
+    volumes:
+      - ../tests/load-tests:/scripts
+    environment:
+      - BASE_URL=http://telegram-service:8080
+      - CHANNEL_ID=00000000-0000-0000-0000-000000000001
+      - MOCK_URL=http://telegram-mock:8080
+    command: run /scripts/scenarios/branching-dialog.js
+    depends_on:
+      - telegram-service
+    networks:
+      - loadtest_network
+
+  # ==========================================
+  # 5. Метрики и Observability (Seq, Jaeger, Prometheus, Grafana)
+  # ==========================================
+  seq:
+    image: datalust/seq:latest
+    container_name: loadtest_seq
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_ADMINPASSWORD=YourPassword123!
+    ports:
+      - "5345:80"
+    volumes:
+      - loadtest_seq_data:/data
+    networks:
+      - loadtest_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: loadtest_jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16688:16686"
+      - "4319:4317"
+      - "4320:4318"
+    networks:
+      - loadtest_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: loadtest_prometheus
+    restart: unless-stopped
+    ports:
+      - "9095:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - loadtest_prometheus_data:/prometheus
+    networks:
+      - loadtest_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: loadtest_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3005:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - loadtest_grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - jaeger
+    networks:
+      - loadtest_network
+
+networks:
+  loadtest_network:
+    driver: bridge
+
+volumes:
+  loadtest_seq_data:
+  loadtest_prometheus_data:
+  loadtest_grafana_data:

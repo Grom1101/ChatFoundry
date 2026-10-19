@@ -1,0 +1,191 @@
+@page "/bots/{BotId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+<PageTitle>@(_bot?.Name ?? LDetails["Loading"].Value)</PageTitle>
+
+<div class="bd-page">
+    @if (_isLoading)
+    {
+        <div class="bd-loading">
+            <div class="bd-spinner"></div>
+            <p>@LDetails["Loading"]</p>
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="bd-error">
+            <h5 class="bd-error-title">@LDetails["ErrorTitle"]</h5>
+            <p>@_error</p>
+            <button class="bd-btn-retry" @onclick="LoadBotData">@LDetails["Retry"]</button>
+        </div>
+    }
+    else if (_bot != null)
+    {
+        <nav class="bd-breadcrumb" aria-label="breadcrumb">
+            <a href="/bots" class="bd-breadcrumb-link">@LDetails["BreadcrumbList"]</a>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            <span class="bd-breadcrumb-current">@_bot.Name</span>
+        </nav>
+
+        <div class="bd-header">
+            <div class="bd-header-left">
+                <h1 class="bd-title">@_bot.Name</h1>
+            </div>
+            <div class="bd-header-actions">
+                <button type="button" class="bd-btn-secondary" @onclick="OpenEditModal" title="@LDetails["LabelChannels"]">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    @LDetails["Edit"]
+                </button>
+                <button class="bd-btn-primary" @onclick="CreateNewWorkflow">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    @LDetails["NewEmptyVersion"]
+                </button>
+            </div>
+        </div>
+
+        <div class="bd-stat-grid">
+            <div class="bd-stat-card">
+                <div class="bd-stat-label">@LDetails["LabelChannels"]</div>
+                @{
+                    var chNames = _bot.BotChannels?.Where(bc => bc.Channel != null).Select(bc => bc.Channel!.Name).ToList() ?? new List<string>();
+                }
+                @if (chNames.Count == 0)
+                {
+                    <p class="bd-stat-hint">@LDetails["NoChannelsAttached"]</p>
+                }
+                else
+                {
+                    <ul class="bd-stat-list">
+                        @foreach (var name in chNames)
+                        {
+                            <li>
+                                <svg class="bd-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                @name
+                            </li>
+                        }
+                    </ul>
+                }
+                <a href="/channels" class="bd-stat-link">@LDetails["ManageChannels"]</a>
+            </div>
+
+            <div class="bd-stat-card">
+                <div class="bd-stat-label">@LDetails["LabelStats"]</div>
+                <div class="bd-stat-value">@string.Format(LDetails["VersionsCount"].Value, _bot.Workflows?.Count ?? 0)</div>
+                <p class="bd-stat-hint">@string.Format(LDetails["ModifiedAt"].Value, _bot.ModifiedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))</p>
+            </div>
+
+            @{
+                var active = _bot.Workflows?.FirstOrDefault(w => w.IsActiveBotWorkflow);
+            }
+            <div class="bd-stat-card bd-status-card @(active != null ? "bd-status-card-active" : "bd-status-card-stopped")">
+                <div class="bd-status-label">@LDetails["LabelStatus"]</div>
+                <div class="bd-status-value">@(active != null ? string.Format(LDetails["StatusActive"].Value, active.Version) : LDetails["StatusStopped"].Value)</div>
+            </div>
+        </div>
+
+        <div class="bd-section">
+            <h2 class="bd-section-title">@LDetails["VersionHistory"]</h2>
+            <div class="bd-card">
+                <div class="bd-card-header">
+                    <h3 class="bd-card-title">@LDetails["Versions"]</h3>
+                </div>
+                <div class="bd-table-wrap">
+                    <table class="bd-table">
+                        <thead>
+                            <tr>
+                                <th class="bd-th">@LDetails["ThState"]</th>
+                                <th class="bd-th">@LDetails["ThCreated"]</th>
+                                <th class="bd-th">@LDetails["ThModified"]</th>
+                                <th class="bd-th bd-th-actions">@LDetails["ThActions"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var wf in _bot.Workflows.OrderByDescending(w => w.Version))
+                            {
+                                <tr class="@(wf.IsActiveBotWorkflow ? "bd-row-active" : "")">
+                                    <td class="bd-td">
+                                        @if (wf.IsActiveBotWorkflow)
+                                        {
+                                            <span class="bd-badge bd-badge-success">@LDetails["StateActive"]</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="bd-badge bd-badge-neutral">@LDetails["StateArchive"]</span>
+                                        }
+                                    </td>
+                                    <td class="bd-td">@wf.CreatedAt.ToLocalTime().ToString("g")</td>
+                                    <td class="bd-td">@wf.ModifiedAt.ToLocalTime().ToString("g")</td>
+                                    <td class="bd-td bd-td-actions">
+                                        <button type="button" class="bd-btn-copy" @onclick="() => CreateWorkflowFromVersion(wf.Id)" title="@LDetails["BtnCopyTooltip"]">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                                        </button>
+                                        @if (!wf.IsActiveBotWorkflow)
+                                        {
+                                            <button type="button" class="bd-btn-activate" @onclick="() => SetActive(wf.Id)">
+                                                @LDetails["BtnActivate"]
+                                            </button>
+                                            <button type="button" class="bd-btn-delete" @onclick="() => DeleteWorkflow(wf.Id)" title="@LDetails["BtnDelete"]">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                            </button>
+                                        }
+                                        <a class="bd-btn-editor" target="_blank" rel="noopener noreferrer" href="@GetDesignerUrl(wf.Id)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                            @LDetails["BtnEditor"]
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+
+@if (showEditModal)
+{
+    <div class="bots-modal-backdrop" @onclick="CloseEditModal"></div>
+    <div class="bots-modal">
+        <div class="bots-modal-header">
+            <h3 class="bots-modal-title">@LDetails["ModalEditTitle"]</h3>
+            <button type="button" class="bots-modal-close" @onclick="CloseEditModal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="bots-modal-body">
+            <div class="bots-field">
+                <label class="bots-label">@LDetails["LabelBotName"]</label>
+                <input type="text" class="bots-input" @bind="editBotName" placeholder="@LDetails["LabelBotNamePlaceholder"]" />
+            </div>
+            <div class="bots-field">
+                <label class="bots-label">@LDetails["LabelChannels"]</label>
+                @if (availableChannels.Count == 0)
+                {
+                    <p class="bots-hint">@((MarkupString)LDetails["NoAvailableChannels"].Value)</p>
+                }
+                else
+                {
+                    <div class="bots-channels-box">
+                        @foreach (var ch in availableChannels)
+                        {
+                            <label class="bots-check-item">
+                                <input type="checkbox" checked="@selectedChannelIds.Contains(ch.Id)" @onchange="() => ToggleChannel(ch.Id)" />
+                                <span>@ch.Name <span class="bots-check-muted">(@ch.ChannelType)</span></span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="bots-modal-footer">
+            <button type="button" class="bots-btn-secondary" @onclick="CloseEditModal">@LDetails["BtnCancel"]</button>
+            <button type="button" class="bots-btn-save" @onclick="SaveBot" disabled="@(isSavingEdit || string.IsNullOrWhiteSpace(editBotName))">
+                @if (isSavingEdit) { <div class="bots-spinner" style="width:18px;height:18px;border-width:2px;"></div> }
+                @LDetails["BtnSave"]
+            </button>
+        </div>
+    </div>
+}

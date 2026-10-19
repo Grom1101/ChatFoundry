@@ -1,0 +1,23 @@
+@page "/logout"
+@using BlazorClient.Auth
+@using Blazored.LocalStorage
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>@L["LogoutTitle"]</PageTitle>
+
+<h1>@L["LoggingOut"]</h1>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await LocalStorage.RemoveItemAsync("authToken");
+        await LocalStorage.RemoveItemAsync("refreshToken");
+        await LocalStorage.RemoveItemAsync("userEmail");
+        ((ApiAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsLoggedOut();
+        Navigation.NavigateTo("/");
+    }
+}

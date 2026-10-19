@@ -1,0 +1,148 @@
+﻿# ==========================================
+# 1. Gateway Service (Replicas: 2)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+  namespace: chatfoundry
+  labels:
+    app: gateway-service
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: legacy-port
+    port: 5000
+    targetPort: 8080
+  selector:
+    app: gateway-service
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+  namespace: chatfoundry
+  labels:
+    app: gateway-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+      - name: gateway-service
+        image: ghcr\.io/grom1101/chatfoundry/gateway:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: chatfoundry-common-config
+        env:
+        - name: OpenIddict__EncryptionKey
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: OpenIddict__EncryptionKey
+        - name: Telegram__SecretToken
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: Telegram__SecretToken
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 384Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+# ==========================================
+# 2. Web Client (Blazor UI) (Replicas: 2)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-client
+  namespace: chatfoundry
+  labels:
+    app: web-client
+spec:
+  type: LoadBalancer
+  ports:
+  - name: legacy-port
+    port: 7555
+    targetPort: 80
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: web-client
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-client
+  namespace: chatfoundry
+  labels:
+    app: web-client
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-client
+  template:
+    metadata:
+      labels:
+        app: web-client
+    spec:
+      containers:
+      - name: web-client
+        image: ghcr\.io/grom1101/chatfoundry/web-client:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10

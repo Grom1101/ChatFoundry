@@ -1,0 +1,194 @@
+{
+	"info": {
+		"_postman_id": "a9b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d",
+		"name": "BotFoundry - Telegram Webhook",
+		"description": "Коллекция для быстрого тестирования вебхуков Telegram и отправки пачек сообщений в Workflow.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://probable-dogfish-known.ngrok-free.app",
+			"type": "string"
+		},
+		{
+			"key": "channelId",
+			"value": "2e5efe38-b50b-42fe-950c-54ca6bce6c6c",
+			"type": "string"
+		},
+		{
+			"key": "secretToken",
+			"value": "7b3e1a5d-9c24-4f8a-b13d-6e5f8a3c9b47",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "1116709501",
+			"type": "string"
+		},
+		{
+			"key": "userName",
+			"value": "Odins0n",
+			"type": "string"
+		},
+		{
+			"key": "firstName",
+			"value": "Yuri",
+			"type": "string"
+		},
+		{
+			"key": "messageText",
+			"value": "ап",
+			"type": "string"
+		},
+		{
+			"key": "batchCount",
+			"value": "5",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Single Telegram Message",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Telegram-Bot-Api-Secret-Token",
+						"value": "{{secretToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"update_id\": {{$randomInt}},\n  \"message\": {\n    \"message_id\": {{$randomInt}},\n    \"from\": {\n      \"id\": {{userId}},\n      \"is_bot\": false,\n      \"first_name\": \"{{firstName}}\",\n      \"username\": \"{{userName}}\",\n      \"language_code\": \"ru\",\n      \"is_premium\": true\n    },\n    \"chat\": {\n      \"id\": {{userId}},\n      \"first_name\": \"{{firstName}}\",\n      \"username\": \"{{userName}}\",\n      \"type\": \"private\"\n    },\n    \"date\": {{$timestamp}},\n    \"text\": \"{{messageText}}\"\n  }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/telegram/hook/{{channelId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"telegram",
+						"hook",
+						"{{channelId}}"
+					]
+				},
+				"description": "Одиночная отправка сообщения от пользователя в Telegram вебхук бота."
+			},
+			"response": []
+		},
+		{
+			"name": "Batch Telegram Messages (За один клик)",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const batchSize = parseInt(pm.variables.get('batchCount') || '5', 10);",
+							"const baseUrl = pm.variables.get('baseUrl');",
+							"const channelId = pm.variables.get('channelId');",
+							"const secretToken = pm.variables.get('secretToken');",
+							"const userId = parseInt(pm.variables.get('userId') || '1116709501', 10);",
+							"const firstName = pm.variables.get('firstName') || 'Yuri';",
+							"const userName = pm.variables.get('userName') || 'Odins0n';",
+							"const baseText = pm.variables.get('messageText') || 'ап';",
+							"",
+							"console.log(`[Batch] Отправка пачки из ${batchSize} сообщений одновременно...`);",
+							"",
+							"for (let i = 1; i <= batchSize; i++) {",
+							"    const updateId = Math.floor(Math.random() * 1000000000);",
+							"    const messageId = Math.floor(Math.random() * 100000);",
+							"    const payload = {",
+							"        update_id: updateId,",
+							"        message: {",
+							"            message_id: messageId,",
+							"            from: {",
+							"                id: userId,",
+							"                is_bot: false,",
+							"                first_name: firstName,",
+							"                username: userName,",
+							"                language_code: 'ru',",
+							"                is_premium: true",
+							"            },",
+							"            chat: {",
+							"                id: userId,",
+							"                first_name: firstName,",
+							"                username: userName,",
+							"                type: 'private'",
+							"            },",
+							"            date: Math.floor(Date.now() / 1000),",
+							"            text: `${baseText} #${i}`",
+							"        }",
+							"    };",
+							"",
+							"    pm.sendRequest({",
+							"        url: `${baseUrl}/telegram/hook/${channelId}`,",
+							"        method: 'POST',",
+							"        header: {",
+							"            'Content-Type': 'application/json',",
+							"            'X-Telegram-Bot-Api-Secret-Token': secretToken",
+							"        },",
+							"        body: {",
+							"            mode: 'raw',",
+							"            raw: JSON.stringify(payload)",
+							"        }",
+							"    }, function (err, res) {",
+							"        if (err) {",
+							"            console.error(`[Batch] Ошибка при отправке #${i}:`, err);",
+							"        } else {",
+							"            console.log(`[Batch] Сообщение #${i} отправлено. Код ответа: ${res.code}`);",
+							"        }",
+							"    });",
+							"}"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "X-Telegram-Bot-Api-Secret-Token",
+						"value": "{{secretToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"update_id\": {{$randomInt}},\n  \"message\": {\n    \"message_id\": {{$randomInt}},\n    \"from\": {\n      \"id\": {{userId}},\n      \"is_bot\": false,\n      \"first_name\": \"{{firstName}}\",\n      \"username\": \"{{userName}}\",\n      \"language_code\": \"ru\",\n      \"is_premium\": true\n    },\n    \"chat\": {\n      \"id\": {{userId}},\n      \"first_name\": \"{{firstName}}\",\n      \"username\": \"{{userName}}\",\n      \"type\": \"private\"\n    },\n    \"date\": {{$timestamp}},\n    \"text\": \"{{messageText}} (основной)\"\n  }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/telegram/hook/{{channelId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"telegram",
+						"hook",
+						"{{channelId}}"
+					]
+				},
+				"description": "Отправка пачки сообщений (задается переменной batchCount) за один клик по кнопке Send."
+			},
+			"response": []
+		}
+	]
+}

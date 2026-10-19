@@ -1,0 +1,275 @@
+@page "/settings/sessions/{SessionId:guid}"
+@using Blazor.Diagrams.Components
+@using Blazor.Diagrams.Components.Widgets
+@using Microsoft.AspNetCore.Authorization
+@layout DesignerLayout
+@attribute [Authorize]
+
+@inject BlazorClient.Interfaces.IWorkflowApiClient ApiClient
+@inject BlazorClient.Interfaces.IWorkflowSchemaService SchemaService
+@inject NavigationManager Navigation
+
+<PageTitle>@LReplay["PageTitle"] — ChatFoundry</PageTitle>
+
+<div class="replay-page-container">
+    <!-- Левая панель: информация о сессии и шаги -->
+    <aside class="replay-sidebar">
+        <div class="replay-sidebar-header">
+            <button class="replay-back-btn" @onclick="GoBack" title="@LReplay["BackToSessions"]">
+                <span class="oi oi-arrow-left"></span>
+            </button>
+            <div>
+                <div class="replay-sidebar-title">@LReplay["SidebarTitle"]</div>
+                <div class="replay-sidebar-subtitle">@LReplay["SidebarSubtitle"]</div>
+            </div>
+        </div>
+
+        @if (_session != null)
+        {
+            <div class="replay-session-info">
+                <div class="replay-info-row">
+                    <span class="replay-info-label">@LReplay["Bot"]</span>
+                    <span class="replay-info-value">@(_session.Workflow?.Bot?.Name ?? "—")</span>
+                </div>
+                <div class="replay-info-row">
+                    <span class="replay-info-label">@LReplay["Client"]</span>
+                    <span class="replay-info-value"><code>@_session.ClientId</code></span>
+                </div>
+                <div class="replay-info-row">
+                    <span class="replay-info-label">@LReplay["Channel"]</span>
+                    <span class="replay-info-value">@FormatChannel(_session.Channel)</span>
+                </div>
+                <div class="replay-info-row">
+                    <span class="replay-info-label">@LReplay["Status"]</span>
+                    <span class="badge @StatusBadgeClass(_session.Status)">@StatusLabel(_session.Status)</span>
+                </div>
+                <div class="replay-info-row">
+                    <span class="replay-info-label">@LReplay["Created"]</span>
+                    <span class="replay-info-value">@_session.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                </div>
+                @if (_session.CompletedAt.HasValue)
+                {
+                    <div class="replay-info-row">
+                        <span class="replay-info-label">@LReplay["Completed"]</span>
+                        <span class="replay-info-value">@_session.CompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                    </div>
+                }
+            </div>
+
+            @if (IsSessionActive)
+            {
+                <div class="replay-complete-container">
+                    <button class="replay-complete-btn" @onclick="CompleteSession" disabled="@_isCompleting">
+                        @if (_isCompleting)
+                        {
+                            <span class="spinner-border text-danger" role="status" aria-hidden="true"></span>
+                            <span>@LReplay["Completing"]</span>
+                        }
+                        else
+                        {
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            <span>@LReplay["CompleteSession"]</span>
+                        }
+                    </button>
+                </div>
+            }
+
+            <!-- Вкладки -->
+            <div class="replay-tabs">
+                <button class="replay-tab @(_activeTab == 0 ? "active" : "")" @onclick="() => _activeTab = 0">
+                    @string.Format(LReplay["TabSteps"], _session.Actions?.Count ?? 0)
+                </button>
+                <button class="replay-tab @(_activeTab == 1 ? "active" : "")" @onclick="() => _activeTab = 1">
+                    @LReplay["TabVariables"]
+                </button>
+            </div>
+
+            <div class="replay-sidebar-content">
+                @if (_activeTab == 0)
+                {
+                    <!-- Шаги -->
+                    <div class="replay-steps">
+                        @if (_orderedActions != null)
+                        {
+                            @foreach (var (action, index) in _orderedActions.Select((a, i) => (a, i)))
+                            {
+                                var nodeLabel = GetNodeLabel(action.NodeId);
+                                var isSelected = _selectedStepIndex == index;
+                                var isCurrent = _session.CurrentNodeId.HasValue && action.NodeId == _session.CurrentNodeId.Value;
+                                var isFailed = string.Equals(action.Status, "FAILED", StringComparison.OrdinalIgnoreCase);
+
+                                <div class="replay-step-wrap">
+                                    <button class="replay-step @(isSelected ? "selected" : "") @(isCurrent ? "current" : "")"
+                                            @onclick="() => SelectStep(index)">
+                                        <div class="replay-step-number">@(index + 1)</div>
+                                        <div class="replay-step-body">
+                                            <div class="replay-step-title">@nodeLabel</div>
+                                            <div class="replay-step-meta">
+                                                <span class="replay-step-type">@action.WorkflowNodeType</span>
+                                                <span class="replay-step-status @ActionStatusClass(action.Status)">@ActionStatusLabel(action.Status)</span>
+                                            </div>
+                                            <div class="replay-step-time">@action.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+                else
+                {
+                    <!-- Переменные -->
+                    <div class="replay-variables">
+                        @{
+                            var globalVariables = GetGlobalVariables();
+                            var sessionVariableItems = GetSessionVariableItems();
+                        }
+
+                        @if (globalVariables.Any() || sessionVariableItems.Any())
+                        {
+                            <div class="replay-var-search">
+                                <span class="oi oi-magnifying-glass"></span>
+                                <input type="text" placeholder="@LReplay["SearchPlaceholder"]" @bind="_varSearch" @bind:event="oninput"/>
+                            </div>
+
+                            @if (globalVariables.Any())
+                            {
+                                <div class="replay-var-group-title">@LReplay["AttributesGroup"]</div>
+                                @foreach (var kv in globalVariables)
+                                {
+                                    <div class="replay-var-item var-global">
+                                        <code class="replay-var-name">@kv.Key</code>
+                                        <pre class="replay-var-value">@(string.IsNullOrEmpty(kv.Value) ? LReplay["EmptyValue"] : kv.Value)</pre>
+                                    </div>
+                                }
+                            }
+
+                            @if (sessionVariableItems.Any())
+                            {
+                                <div class="replay-var-group-title">@LReplay["SessionVariablesGroup"]</div>
+                                @foreach (var item in sessionVariableItems)
+                                {
+                                    if (item.NodeId.HasValue)
+                                    {
+                                        var isExpanded = _expandedNodes.Contains(item.NodeId.Value);
+                                        var colorClass = GetNodeColorClass(item.NodeId);
+                                        <div class="replay-var-node-group">
+                                            <button class="replay-var-node-toggle @colorClass" @onclick="() => ToggleNode(item.NodeId!.Value)">
+                                                <span class="replay-var-node-arrow @(isExpanded ? "expanded" : "")">&#8250;</span>
+                                                <span class="replay-var-node-label">@item.DisplayName</span>
+                                            </button>
+                                            @if (isExpanded)
+                                            {
+                                                <div class="replay-var-node-content">
+                                                    @foreach (var line in item.Lines)
+                                                    {
+                                                        <div class="replay-var-line">
+                                                            <span class="replay-var-line-label">@line.Label:</span>
+                                                            <pre class="replay-var-line-value">@(line.DisplayValue.Length > 100 ? line.DisplayValue[..100] + "..." : line.DisplayValue)</pre>
+                                                            @if (line.Label == LReplay["SuffixOutput"])
+                                                            {
+                                                                <button class="replay-var-expand-btn" @onclick="() => OpenValueModal(line.Label, line.FullValue)">
+                                                                    @LReplay["Show"]
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="replay-var-item var-session">
+                                            <code class="replay-var-name">@item.DisplayName</code>
+                                            <pre class="replay-var-value">@(item.Lines[0].DisplayValue.Length > 100 ? item.Lines[0].DisplayValue[..100] + "..." : item.Lines[0].DisplayValue)</pre>
+                                        </div>
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <div class="replay-empty-state">
+                                @LReplay["NoVariables"]
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </aside>
+
+    <!-- Основная область: канвас -->
+    <main class="replay-main">
+        <header class="replay-header">
+            <div class="replay-header-left">
+                <span class="replay-workflow-title">@LReplay["ViewPath"]</span>
+                <span class="replay-badge">Replay</span>
+                @if (_session?.Workflow?.Bot != null)
+                {
+                    <span class="replay-header-divider"></span>
+                    <span class="replay-header-bot">@_session.Workflow.Bot.Name v@_session.Workflow.Version</span>
+                }
+            </div>
+            <div class="replay-header-right">
+                <div class="replay-legend">
+                    <span class="replay-legend-item"><span class="replay-legend-dot legend-visited"></span> @LReplay["LegendVisited"]</span>
+                    <span class="replay-legend-item"><span class="replay-legend-dot legend-current"></span> @LReplay["LegendCurrent"]</span>
+                    <span class="replay-legend-item"><span class="replay-legend-dot legend-failed"></span> @LReplay["LegendFailed"]</span>
+                    <span class="replay-legend-item"><span class="replay-legend-dot legend-unvisited"></span> @LReplay["LegendUnvisited"]</span>
+                </div>
+            </div>
+        </header>
+
+        @if (!string.IsNullOrEmpty(_loadError))
+        {
+            <div class="alert alert-danger m-3" role="alert">@_loadError</div>
+        }
+        else if (_isLoading)
+        {
+            <div class="d-flex justify-content-center align-items-center" style="flex:1">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">@LReplay["Loading"]</span>
+                </div>
+            </div>
+        }
+        else if (Diagram != null)
+        {
+            <div class="replay-canvas-area">
+                <CascadingValue Value="@((IReplayDataProvider)this)" Name="ReplayDataProvider">
+                    <CascadingValue Value="Diagram">
+                        <DiagramCanvas class="replay-canvas">
+                            <Widgets>
+                                <GridWidget Size="24" Mode="GridMode.Point" BackgroundColor="#ffffff"/>
+                            </Widgets>
+                        </DiagramCanvas>
+                    </CascadingValue>
+                </CascadingValue>
+
+                <div class="replay-zoom-controls">
+                    <button class="replay-zoom-btn" @onclick="ZoomOut" title="@LReplay["ZoomOut"]">
+                        <span class="oi oi-minus"></span>
+                    </button>
+                    <span class="replay-zoom-value">@ZoomPercent%</span>
+                    <button class="replay-zoom-btn" @onclick="ZoomIn" title="@LReplay["ZoomIn"]">
+                        <span class="oi oi-plus"></span>
+                    </button>
+                </div>
+            </div>
+        }
+    </main>
+
+    @if (_modalValue != null)
+    {
+        <div class="replay-modal-overlay" @onclick="CloseValueModal">
+            <div class="replay-modal" @onclick:stopPropagation="true">
+                <div class="replay-modal-header">
+                    <span class="replay-modal-title">@_modalLabel</span>
+                    <button class="replay-modal-close" @onclick="CloseValueModal">&times;</button>
+                </div>
+                <pre class="replay-modal-body">@_modalValue</pre>
+            </div>
+        </div>
+    }
+</div>

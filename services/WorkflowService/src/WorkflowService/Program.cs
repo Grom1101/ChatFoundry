@@ -1,0 +1,269 @@
+using Confluent.Kafka;
+using MassTransit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using Shared.Application.Events;
+using Shared.Infrastructure.DependencyInjection;
+using Shared.Infrastructure.Licensing;
+using Scheduler.Grpc;
+using Shared.Infrastructure.GraphQl;
+using Workflow.Grpc.Client;
+using WorkflowService.Actions.Executors;
+using WorkflowService.Actions.Factories;
+using WorkflowService.Consumers;
+using WorkflowService.Data;
+using WorkflowService.Events;
+using WorkflowService.GraphQL;
+using WorkflowService.GraphQL.Mutations;
+using WorkflowService.Grpc;
+using WorkflowService.Interfaces;
+using WorkflowService.Models;
+using WorkflowService.Repositories;
+using WorkflowService.Services;
+using WorkflowService.Utils;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.AddChatFoundryObservability("workflow-service");
+
+var services = builder.Services;
+services.AddControllers();
+services.AddEndpointsApiExplorer();
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = builder.Configuration["IdentityService:JwtAuthority"] ?? "http://identity-service:8080";
+        options.RequireHttpsMetadata = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["IdentityService:JwtIssuer"] ?? "http://identity-service:8080/",
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true
+        };
+    });
+
+services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+services.AddScoped<IActionRepository, ActionRepository>();
+services.AddScoped<ISessionRepository, SessionRepository>();
+services.AddScoped<IBotRepository, BotRepository>();
+services.AddScoped<IChannelRepository, ChannelRepository>();
+
+services.AddScoped<ISessionResolver, SessionResolver>();
+services.AddScoped<IActionFactory, ActionFactory>();
+
+services.AddScoped<IActionExecutor, SendMessageActionExecutor>();
+services.AddScoped<IActionExecutor, AskActionExecutor>();
+services.AddScoped<IActionExecutor, StartActionExecutor>();
+services.AddScoped<IActionExecutor, InputExecutor>();
+services.AddScoped<IActionExecutor, SetAttributeActionExecutor>();
+services.AddScoped<IActionExecutor, HttpRequestActionExecutor>();
+services.AddScoped<IActionExecutor, AIGenerateActionExecutor>();
+services.AddScoped<IActionExecutor, SendMediaActionExecutor>();
+services.AddScoped<IActionExecutor, SubWorkflowActionExecutor>();
+services.AddScoped<IActionExecutor, TransferToOperatorActionExecutor>();
+services.AddScoped<IActionExecutor, WaitActionExecutor>();
+services.AddScoped<IActionExecutor, WebhookWaitActionExecutor>();
+services.AddScoped<IActionExecutor, TimeStartActionExecutor>();
+
+services.AddScoped<IMessageSender, MessageSender>();
+services.AddScoped<IOpenAiService, OpenAiService>();
+services.AddSingleton<WorkflowAiPromptProvider>();
+services.AddScoped<WorkflowAiGenerationService>();
+
+services.AddScoped<IActionExecutorFactory, ActionExecutorFactory>();
+services.AddSingleton<WorkflowGraphParser>();
+services.AddScoped<WorkflowTextRenderer>();
+services.AddSingleton<SsrfUrlValidator>();
+services.AddScoped<IVariableService, VariableService>();
+
+
+services.AddHttpClient();
+services.Configure<WorkflowService.Configurations.FileServiceOptions>(
+    builder.Configuration.GetSection(WorkflowService.Configurations.FileServiceOptions.SectionName));
+
+var llmProviders = builder.Configuration.GetSection("LlmProviders:OpenAiCompatible")
+    .Get<List<WorkflowService.Configurations.LlmProviderOptions>>() ?? new();
+
+foreach (var provider in llmProviders)
+{
+    if (string.IsNullOrWhiteSpace(provider.ApiUrl))
+    {
+        continue;
+    }
+
+    services.AddHttpClient(provider.Name);
+    services.AddSingleton<IAiProvider>(sp =>
+        new WorkflowService.Services.AiProviders.OpenAiCompatibleProvider(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            provider.Name,
+            provider.Name,
+            provider.ApiKey,
+            provider.ApiUrl,
+            provider.Model));
+}
+
+services.AddHttpClient<FileUrlResolver>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<WorkflowService.Configurations.FileServiceOptions>>().Value;
+    client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+});
+services.AddScoped<IFileUrlResolver>(sp => sp.GetRequiredService<FileUrlResolver>());
+
+services.AddPostgreSql<WorkflowDbContext>(builder.Configuration);
+services.AddChatFoundryLicense(builder.Configuration);
+
+var kafkaConnectionString = builder.Configuration.GetConnectionString("Kafka");
+builder.Services.AddSingleton(new AdminClientConfig
+{
+    BootstrapServers = kafkaConnectionString
+});
+
+services.AddMassTransit(x =>
+{
+    x.UsingInMemory((context, cfg) =>
+    {
+        cfg.ConfigureEndpoints(context);
+    });
+
+    x.AddRider(rider =>
+    {
+        rider.AddConsumer<BotMessageConsumer>();
+        rider.AddConsumer<ExecuteActionConsumer>();
+        rider.AddConsumer<ActionCompletedConsumer>();
+        rider.AddConsumer<CompanySubscriptionChangedConsumer>();
+        rider.AddProducer<TelegramSetWebhookEvent>("telegram.set-webhook");
+
+        rider.AddProducer<string, BotIncomingMessage>("bot.message.incoming");
+        rider.AddProducer<string, BotOutgoingMessage>("bot.message.outgoing");
+        rider.AddProducer<string, ExecuteActionCommand>("workflow.action.execute");
+        rider.AddProducer<string, ActionCompletedEvent>("workflow.action.completed");
+        rider.AddProducer<string, AiTokensConsumedEvent>("billing.usage.ai-tokens");
+        rider.AddProducer<LiveChatRequestedEvent>("livechat.event");
+
+        rider.UsingKafka((context, cfg) =>
+        {
+            cfg.Host(kafkaConnectionString);
+
+            cfg.TopicEndpoint<CompanySubscriptionChangedEvent>(
+                "company.subscription.changed",
+                "workflow-service",
+                e =>
+                {
+                    e.CreateIfMissing();
+                    e.ConfigureConsumer<CompanySubscriptionChangedConsumer>(context);
+                });
+
+            cfg.TopicEndpoint<BotIncomingMessage>(
+                "bot.message.incoming",
+                "workflow-service",
+                e =>
+                {
+                    e.CreateIfMissing();
+                    e.ConfigureConsumer<BotMessageConsumer>(context);
+                });
+            cfg.TopicEndpoint<ExecuteActionCommand>(
+                "workflow.action.execute",
+                "workflow-service",
+                e =>
+                {
+                    e.CreateIfMissing();
+                    e.ConfigureConsumer<ExecuteActionConsumer>(context);
+                });
+            cfg.TopicEndpoint<ActionCompletedEvent>(
+                "workflow.action.completed",
+                "workflow-service",
+                e =>
+                {
+                    e.CreateIfMissing();
+                    e.ConfigureConsumer<ActionCompletedConsumer>(context);
+                });
+        });
+    });
+});
+
+services.AddGrpc();
+
+services.AddGrpcClient<ClientAttributesService.ClientAttributesServiceClient>(o =>
+{
+    o.Address = new Uri("http://client-service:8081");
+})
+.AddStandardResilienceHandler();
+
+services.AddGrpcClient<global::Billing.Grpc.BillingQuotaService.BillingQuotaServiceClient>(o =>
+{
+    var address = builder.Configuration["Services:BillingServiceGrpc"] ?? "http://billing-service:8081";
+    o.Address = new Uri(address);
+}).AddStandardResilienceHandler();
+
+services.AddGrpcClient<SchedulerGrpcService.SchedulerGrpcServiceClient>(o =>
+{
+    o.Address = new Uri("http://scheduler-service:8081");
+}).AddStandardResilienceHandler();
+
+services.AddScoped<BillingQuotaGuard>();
+
+services.AddRedisCache(builder.Configuration, "CacheSettings");
+services.AddGraphQlCaching(builder.Configuration);
+services.AddMemoryCache();
+services.AddSingleton<IWorkflowGraphCache, WorkflowGraphCache>();
+services.AddScoped<ClientAttributesGrpcClient>();
+services.AddScoped<IClientAttributesGrpcClient>(sp => new CachingClientAttributesGrpcClient(
+    sp.GetRequiredService<ClientAttributesGrpcClient>(),
+    sp.GetRequiredService<IDistributedCache>(),
+    sp.GetRequiredService<IOptions<Shared.Infrastructure.Options.FoundryRedisCacheOptions>>(),
+    sp.GetRequiredService<ILogger<CachingClientAttributesGrpcClient>>()));
+
+services.AddScoped<Query>();
+services.AddScoped<BotMutation>();
+services.AddScoped<BotWorkflowMutation>();
+services.AddScoped<ChannelMutation>();
+services.AddScoped<SessionMutation>();
+
+builder.Services
+    .AddGraphQLServer()
+    .ModifyCostOptions(o =>
+    {
+        o.MaxFieldCost = 10_000;
+        o.MaxTypeCost = 10_000;
+    })
+    .AddQueryType<Query>()
+    .AddMutationType<Mutation>()
+    .AddTypeExtension<BotMutation>()
+    .AddTypeExtension<ChannelMutation>()
+    .AddTypeExtension<BotWorkflowMutation>()
+    .AddTypeExtension<SessionMutation>()
+    .AddType<MessengerChannelType>()
+    .AddType<WorkflowService.GraphQL.Types.BotWorkflowType>()
+    .AddType<WorkflowService.GraphQL.Types.SessionType>()
+    .AddProjections()
+    .AddFiltering()
+    .AddSorting();
+
+var app = builder.Build();
+app.UseChatFoundryObservability();
+
+app.MapGrpcService<BotTokenGrpcService>();
+
+app.MapControllers();
+
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapGet("/", () => "Workflow Service is running");
+
+app.MapGet("/run", () => "Workflow executed")
+    .RequireAuthorization();
+
+app.UseGraphQlCaching();
+app.MapGraphQL();
+
+app.Run();
+
+public partial class Program { }

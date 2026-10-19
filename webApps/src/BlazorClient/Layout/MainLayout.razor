@@ -1,0 +1,92 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@inherits LayoutComponentBase
+
+<div class="cf-layout">
+    <header class="cf-header">
+        <div class="cf-header-inner">
+            <a href="/" class="cf-logo">
+                <span class="cf-logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                        <rect width="28" height="28" rx="7" fill="url(#logo-grad)" />
+                        <path d="M8 10.5C8 9.67 8.67 9 9.5 9H18.5C19.33 9 20 9.67 20 10.5V16.5C20 17.33 19.33 18 18.5 18H13L10 21V18H9.5C8.67 18 8 17.33 8 16.5V10.5Z" fill="white" opacity="0.95"/>
+                        <circle cx="12" cy="13.5" r="1" fill="url(#logo-grad)"/>
+                        <circle cx="16" cy="13.5" r="1" fill="url(#logo-grad)"/>
+                        <defs>
+                            <linearGradient id="logo-grad" x1="0" y1="0" x2="28" y2="28">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </span>
+                <span class="cf-logo-text">ChatFoundry</span>
+            </a>
+
+            <nav class="cf-nav">
+                <NavMenu />
+            </nav>
+
+            <div class="cf-header-actions">
+                <BlazorClient.Components.LanguageSelector />
+                <AuthorizeView>
+                    <Authorized Context="authContext">
+                        @{
+                            var nameOrEmail = authContext.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                                ?? authContext.User.FindFirst("email")?.Value
+                                ?? authContext.User.Identity?.Name
+                                ?? "";
+                            var displayName = string.IsNullOrEmpty(nameOrEmail) || nameOrEmail == "User"
+                                ? L["Profile"].Value
+                                : (nameOrEmail.Contains('@') ? nameOrEmail[..nameOrEmail.IndexOf('@')] : nameOrEmail);
+                        }
+                        <a href="/profile" class="cf-user-link">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+                                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            @displayName
+                        </a>
+                        <a href="/logout" class="cf-auth-link cf-auth-logout">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                                <polyline points="16 17 21 12 16 7"/>
+                                <line x1="21" y1="12" x2="9" y2="12"/>
+                            </svg>
+                            <span>@L["Logout"]</span>
+                        </a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="/login" class="cf-auth-link">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/>
+                                <polyline points="10 17 15 12 10 7"/>
+                                <line x1="15" y1="12" x2="3" y2="12"/>
+                            </svg>
+                            <span>@L["Login"]</span>
+                        </a>
+                        <a href="/register" class="cf-btn cf-btn-primary">
+                            @L["Register"]
+                        </a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
+    </header>
+
+    <main class="cf-main">
+        @Body
+    </main>
+
+    <footer class="cf-footer">
+        <div class="cf-footer-inner">
+            <div class="cf-footer-brand">
+                <span class="cf-footer-logo">ChatFoundry</span>
+                <span class="cf-footer-copy">@L["FooterSubtitle"]</span>
+            </div>
+            <div class="cf-footer-links">
+                <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+                <a href="mailto:support@chatfoundry.io">@L["Support"]</a>
+            </div>
+        </div>
+    </footer>
+</div>

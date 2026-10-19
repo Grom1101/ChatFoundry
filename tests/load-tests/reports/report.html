@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>ChatFoundry - Load Test Report</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: #0f172a; color: #f8fafc; padding: 30px; line-height: 1.5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+        .title { font-size: 26px; font-weight: bold; color: #38bdf8; }
+        .subtitle { font-size: 14px; color: #94a3b8; }
+        .badge { background: #059669; color: white; padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 18px; text-align: center; }
+        .card .label { font-size: 13px; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; }
+        .card .value { font-size: 24px; font-weight: bold; color: #f1f5f9; }
+        .card .value.good { color: #34d399; }
+        .card .value.warn { color: #f87171; }
+        .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; margin-bottom: 30px; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
+        th { background: #1e293b; color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 12px; }
+        tr:hover { background: #243248; }
+        .metric-name { font-weight: bold; color: #38bdf8; font-family: monospace; }
+        .highlight { font-weight: bold; color: #fbbf24; }
+        .footer { text-align: center; color: #64748b; font-size: 13px; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <div class="title">ChatFoundry Load Test Report</div>
+                <div class="subtitle">Сценарий: Диалог с ветвлениями (Start -> Ask Buttons -> Choice Reply)</div>
+            </div>
+            <div class="badge">TEST COMPLETED</div>
+        </div>
+
+        <div class="cards">
+            <div class="card">
+                <div class="label">Всего HTTP вызовов</div>
+                <div class="value">5158</div>
+            </div>
+            <div class="card">
+                <div class="label">Ошибок HTTP</div>
+                <div class="value warn">0.02%</div>
+            </div>
+            <div class="card">
+                <div class="label">Ср. время вебхука</div>
+                <div class="value">7.6 ms</div>
+            </div>
+            <div class="card">
+                <div class="label">95-й перцентиль</div>
+                <div class="value">9.1 ms</div>
+            </div>
+            <div class="card">
+                <div class="label">Пик пользователей (VUs)</div>
+                <div class="value">200</div>
+            </div>
+            <div class="card">
+                <div class="label">Завершенных диалогов</div>
+                <div class="value good">2577</div>
+            </div>
+        </div>
+
+        <div class="section-title">Детальные метрики производительности</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Метрика</th>
+                    <th>Count</th>
+                    <th>Min (ms)</th>
+                    <th>Avg (ms)</th>
+                    <th>Med (ms)</th>
+                    <th>p(90) (ms)</th>
+                    <th>p(95) (ms)</th>
+                    <th>Max (ms)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+            <td class="metric-name">vus_max</td>
+            <td>200</td>
+            <td>200.0</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>200.0</td>
+        </tr><tr>
+            <td class="metric-name">data_received</td>
+            <td>474787</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">callback_request_duration</td>
+            <td>-</td>
+            <td>1.5</td>
+            <td>7.5</td>
+            <td>7.3</td>
+            <td>8.5</td>
+            <td class="highlight">9.1</td>
+            <td>19.9</td>
+        </tr><tr>
+            <td class="metric-name">iteration_duration</td>
+            <td>-</td>
+            <td>2007.4</td>
+            <td>2017.0</td>
+            <td>2016.5</td>
+            <td>2019.0</td>
+            <td class="highlight">2020.4</td>
+            <td>2440.8</td>
+        </tr><tr>
+            <td class="metric-name">iterations</td>
+            <td>2577</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">http_reqs</td>
+            <td>5158</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">http_req_receiving</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>0.1</td>
+            <td>0.1</td>
+            <td>0.1</td>
+            <td class="highlight">0.1</td>
+            <td>6.0</td>
+        </tr><tr>
+            <td class="metric-name">data_sent</td>
+            <td>1795524</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">http_req_blocked</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td class="highlight">0.0</td>
+            <td>39.6</td>
+        </tr><tr>
+            <td class="metric-name">completed_dialogs</td>
+            <td>2577</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">checks</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">http_req_duration{expected_response:true}</td>
+            <td>-</td>
+            <td>1.4</td>
+            <td>7.7</td>
+            <td>7.3</td>
+            <td>8.5</td>
+            <td class="highlight">9.1</td>
+            <td>419.4</td>
+        </tr><tr>
+            <td class="metric-name">http_req_connecting</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td class="highlight">0.0</td>
+            <td>39.5</td>
+        </tr><tr>
+            <td class="metric-name">http_req_sending</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.1</td>
+            <td class="highlight">0.1</td>
+            <td>0.7</td>
+        </tr><tr>
+            <td class="metric-name">http_req_failed</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>-</td>
+        </tr><tr>
+            <td class="metric-name">http_req_duration</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>7.6</td>
+            <td>7.3</td>
+            <td>8.5</td>
+            <td class="highlight">9.1</td>
+            <td>419.4</td>
+        </tr><tr>
+            <td class="metric-name">http_req_tls_handshaking</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td>0.0</td>
+            <td class="highlight">0.0</td>
+            <td>0.0</td>
+        </tr><tr>
+            <td class="metric-name">vus</td>
+            <td>0</td>
+            <td>0.0</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="highlight">-</td>
+            <td>199.0</td>
+        </tr><tr>
+            <td class="metric-name">start_request_duration</td>
+            <td>-</td>
+            <td>1.4</td>
+            <td>7.7</td>
+            <td>7.3</td>
+            <td>8.6</td>
+            <td class="highlight">9.1</td>
+            <td>419.4</td>
+        </tr><tr>
+            <td class="metric-name">http_req_waiting</td>
+            <td>-</td>
+            <td>0.0</td>
+            <td>7.5</td>
+            <td>7.2</td>
+            <td>8.4</td>
+            <td class="highlight">9.0</td>
+            <td>419.1</td>
+        </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            ChatFoundry Load Testing System &bull; Generated at 2026-09-10T14:14:53.247Z
+        </div>
+    </div>
+</body>
+</html>

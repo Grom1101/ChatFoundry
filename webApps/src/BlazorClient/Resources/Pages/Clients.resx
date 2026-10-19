@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  
+  <data name="PageTitle" xml:space="preserve">
+    <value>Клиенты</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>Поиск по имени, телефону, почте...</value>
+  </data>
+  <data name="FilterAllChannels" xml:space="preserve">
+    <value>Все каналы</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Загрузка клиентов...</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Повторить</value>
+  </data>
+  <data name="EmptyTitle" xml:space="preserve">
+    <value>Клиенты не найдены</value>
+  </data>
+  <data name="EmptyDescFiltered" xml:space="preserve">
+    <value>Попробуйте изменить параметры поиска или фильтры</value>
+  </data>
+  <data name="EmptyDescDefault" xml:space="preserve">
+    <value>Клиенты появятся здесь после первого взаимодействия с ботом</value>
+  </data>
+  <data name="ThName" xml:space="preserve">
+    <value>Имя</value>
+  </data>
+  <data name="ThChannels" xml:space="preserve">
+    <value>Каналы</value>
+  </data>
+  <data name="ThContact" xml:space="preserve">
+    <value>Контакт</value>
+  </data>
+  <data name="ThPhone" xml:space="preserve">
+    <value>Телефон</value>
+  </data>
+  <data name="ThEmail" xml:space="preserve">
+    <value>Почта</value>
+  </data>
+  <data name="ThCreated" xml:space="preserve">
+    <value>Создан</value>
+  </data>
+  <data name="ThActivity" xml:space="preserve">
+    <value>Активность</value>
+  </data>
+  <data name="PaginationShown" xml:space="preserve">
+    <value>Показано {0} из {1}</value>
+  </data>
+  <data name="PaginationSize" xml:space="preserve">
+    <value>Размер:</value>
+  </data>
+  <data name="LoadError" xml:space="preserve">
+    <value>Не удалось загрузить клиентов: {0}</value>
+  </data>
+  <data name="CreateClientTitle" xml:space="preserve">
+    <value>Создать клиента</value>
+  </data>
+  <data name="ChannelTypeLabel" xml:space="preserve">
+    <value>Тип канала</value>
+  </data>
+  <data name="ChannelTypeHint" xml:space="preserve">
+    <value>Вручную можно создавать только SMS клиентов</value>
+  </data>
+  <data name="SmsChannelLabel" xml:space="preserve">
+    <value>SMS-канал</value>
+  </data>
+  <data name="LoadingChannels" xml:space="preserve">
+    <value>Загрузка каналов...</value>
+  </data>
+  <data name="NoSmsChannelsWarning" xml:space="preserve">
+    <value>Внимание: у вашей компании нет настроенных SMS-каналов. Сначала добавьте канал в настройках.</value>
+  </data>
+  <data name="FirstNameLabel" xml:space="preserve">
+    <value>Имя</value>
+  </data>
+  <data name="FirstNamePlaceholder" xml:space="preserve">
+    <value>Иван</value>
+  </data>
+  <data name="LastNameLabel" xml:space="preserve">
+    <value>Фамилия</value>
+  </data>
+  <data name="LastNamePlaceholder" xml:space="preserve">
+    <value>Иванов</value>
+  </data>
+  <data name="PhoneLabel" xml:space="preserve">
+    <value>Телефон</value>
+  </data>
+  <data name="PhonePlaceholder" xml:space="preserve">
+    <value>+79991234567</value>
+  </data>
+  <data name="DisplayNameLabel" xml:space="preserve">
+    <value>Отображаемое имя</value>
+  </data>
+  <data name="DisplayNamePlaceholder" xml:space="preserve">
+    <value>Иван Иванов</value>
+  </data>
+  <data name="DisplayNameHint" xml:space="preserve">
+    <value>Имя, которое будет отображаться в списке клиентов</value>
+  </data>
+  <data name="BtnCancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="BtnCreate" xml:space="preserve">
+    <value>Создать</value>
+  </data>
+  <data name="BtnSaving" xml:space="preserve">
+    <value>Создание...</value>
+  </data>
+  <data name="ErrorLoadChannels" xml:space="preserve">
+    <value>Не удалось загрузить список каналов</value>
+  </data>
+  <data name="ErrorPhoneRequired" xml:space="preserve">
+    <value>Телефон является обязательным полем для SMS-клиента.</value>
+  </data>
+  <data name="ErrorChannelRequired" xml:space="preserve">
+    <value>Необходимо выбрать SMS-канал компании.</value>
+  </data>
+  <data name="ErrorDisplayNameRequired" xml:space="preserve">
+    <value>Отображаемое имя обязательно для заполнения.</value>
+  </data>
+  <data name="ErrorCreateFailed" xml:space="preserve">
+    <value>Не удалось создать клиента. Пожалуйста, попробуйте позже.</value>
+  </data>
+  <data name="ErrorCreateException" xml:space="preserve">
+    <value>Ошибка при создании клиента</value>
+  </data>
+  <data name="BtnAddClient" xml:space="preserve">
+    <value>Добавить клиента</value>
+  </data>
+</root>

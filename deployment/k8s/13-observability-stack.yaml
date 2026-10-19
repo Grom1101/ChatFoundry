@@ -1,0 +1,635 @@
+# ==========================================
+# 1. ConfigMaps for Prometheus & Grafana
+# ==========================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: chatfoundry
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'gateway'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['gateway-service:8080']
+            labels:
+              service: 'gateway'
+
+      - job_name: 'workflow-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['workflow-service:8080']
+            labels:
+              service: 'workflow-service'
+
+      - job_name: 'client-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['client-service:8080']
+            labels:
+              service: 'client-service'
+
+      - job_name: 'identity-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['identity-service:8080']
+            labels:
+              service: 'identity-service'
+
+      - job_name: 'telegram-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['telegram-service:8080']
+            labels:
+              service: 'telegram-service'
+
+      - job_name: 'file-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['file-service:8080']
+            labels:
+              service: 'file-service'
+
+      - job_name: 'company-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['company-service:8080']
+            labels:
+              service: 'company-service'
+
+      - job_name: 'billing-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['billing-service:8080']
+            labels:
+              service: 'billing-service'
+
+      - job_name: 'notification-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['notification-service:8080']
+            labels:
+              service: 'notification-service'
+
+      - job_name: 'scheduler-service'
+        metrics_path: '/metrics'
+        static_configs:
+          - targets: ['scheduler-service:8080']
+            labels:
+              service: 'scheduler-service'
+
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: chatfoundry
+data:
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: '15s'
+      - name: Jaeger
+        type: jaeger
+        access: proxy
+        url: http://jaeger:16686
+        editable: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: chatfoundry
+data:
+  dashboard.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'ChatFoundry'
+        orgId: 1
+        folder: 'ChatFoundry'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /etc/grafana/provisioning/dashboards/json
+          foldersFromFilesStructure: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-json
+  namespace: chatfoundry
+data:
+  chatfoundry-overview.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "title": "Services Up",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "up{job=~\"gateway|workflow-service|client-service|identity-service|telegram-service|file-service|company-service|billing-service|notification-service|scheduler-service\"}",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+            }
+          }
+        },
+        {
+          "title": "Request Rate (req/s)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 6, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_duration_seconds_count{service=~\"$service\"}[5m])) by (service)",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "Request Duration p95 (ms)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service=~\"$service\"}[5m])) by (le, service)) * 1000",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "Request Duration p99 (ms)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service=~\"$service\"}[5m])) by (le, service)) * 1000",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "Error Rate (5xx)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_duration_seconds_count{service=~\"$service\", http.response_status_code=~\"5..\"}[5m])) by (service)",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 }, "color": { "mode": "palette-classic" } }
+          }
+        },
+        {
+          "title": "Active Requests",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "targets": [
+            {
+              "expr": "http_server_active_requests{service=~\"$service\"}",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "Process Memory (MB)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+          "targets": [
+            {
+              "expr": "process_runtime_dotnet_process_memory_working_set_bytes{service=~\"$service\"} / 1024 / 1024",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "decmbytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "GC Heap Size (MB)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+          "targets": [
+            {
+              "expr": "process_runtime_dotnet_gc_heap_size_bytes{service=~\"$service\"} / 1024 / 1024",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "decmbytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "ThreadPool Queue Length",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+          "targets": [
+            {
+              "expr": "process_runtime_dotnet_threadpool_queue_length{service=~\"$service\"}",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        },
+        {
+          "title": "CPU Cores Used",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+          "targets": [
+            {
+              "expr": "process_runtime_dotnet_process_cpu_count{service=~\"$service\"}",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+          }
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 39,
+      "tags": ["chatfoundry", "overview"],
+      "templating": {
+        "list": [
+          {
+            "name": "service",
+            "type": "query",
+            "query": "label_values(http_server_request_duration_seconds_count, service)",
+            "refresh": 2,
+            "includeAll": true,
+            "allValue": ".*",
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "ChatFoundry Overview",
+      "uid": "chatfoundry-overview",
+      "version": 1
+    }
+
+---
+# ==========================================
+# 2. Seq (Structured Logs Server)
+# ==========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seq-data
+  namespace: chatfoundry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seq
+  namespace: chatfoundry
+  labels:
+    app: seq
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 5341
+      targetPort: 80
+  selector:
+    app: seq
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seq
+  namespace: chatfoundry
+  labels:
+    app: seq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seq
+  template:
+    metadata:
+      labels:
+        app: seq
+    spec:
+      containers:
+      - name: seq
+        image: datalust/seq:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ACCEPT_EULA
+          value: "Y"
+        - name: SEQ_FIRSTRUN_ADMINPASSWORD
+          value: "YourPassword123!"
+        ports:
+        - name: http
+          containerPort: 80
+        volumeMounts:
+        - name: seq-storage
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+      volumes:
+      - name: seq-storage
+        persistentVolumeClaim:
+          claimName: seq-data
+
+---
+# ==========================================
+# 3. Jaeger (Distributed Tracing)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: chatfoundry
+  labels:
+    app: jaeger
+spec:
+  type: LoadBalancer
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+  selector:
+    app: jaeger
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: chatfoundry
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        ports:
+        - name: ui
+          containerPort: 16686
+        - name: otlp-grpc
+          containerPort: 4317
+        - name: otlp-http
+          containerPort: 4318
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+---
+# ==========================================
+# 4. Prometheus (Metrics Server)
+# ==========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: chatfoundry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: chatfoundry
+  labels:
+    app: prometheus
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+  selector:
+    app: prometheus
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: chatfoundry
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        imagePullPolicy: IfNotPresent
+        args:
+          - "--config.file=/etc/prometheus/prometheus.yml"
+          - "--storage.tsdb.path=/prometheus"
+        ports:
+        - name: http
+          containerPort: 9090
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+        - name: storage-volume
+          mountPath: /prometheus
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-config
+      - name: storage-volume
+        persistentVolumeClaim:
+          claimName: prometheus-data
+
+---
+# ==========================================
+# 5. Grafana (Dashboard Visualization)
+# ==========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: chatfoundry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: chatfoundry
+  labels:
+    app: grafana
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: grafana
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: chatfoundry
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        ports:
+        - name: http
+          containerPort: 3000
+        volumeMounts:
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboards-provider
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboards-json
+          mountPath: /etc/grafana/provisioning/dashboards/json
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboards-provider
+        configMap:
+          name: grafana-dashboards-provider
+      - name: dashboards-json
+        configMap:
+          name: grafana-dashboards-json
+      - name: grafana-storage
+        persistentVolumeClaim:
+          claimName: grafana-data

@@ -1,0 +1,414 @@
+@page "/bots"
+@using Microsoft.AspNetCore.Authorization
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
+@attribute [Authorize]
+
+@inject BlazorClient.Interfaces.IWorkflowApiClient ApiClient
+@inject IStringLocalizer<Bots> LBots
+
+<PageTitle>@LBots["PageTitle"]</PageTitle>
+
+<div class="bots-page">
+    <div class="bots-header">
+        <div class="bots-header-left">
+            <h1 class="bots-title">@LBots["PageTitle"]</h1>
+            @if (!isLoading && bots.Any())
+            {
+                <span class="bots-count">@bots.Count</span>
+            }
+        </div>
+        <button class="bots-btn-primary" @onclick="OnOpenCreateModal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            @LBots["AddBot"]
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="bots-loading">
+            <div class="bots-spinner"></div>
+            <p>@LBots["Loading"]</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(error))
+    {
+        <div class="bots-error">
+            <span>@error</span>
+            <button type="button" class="bots-error-close" @onclick="() => error = null">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    }
+    else if (!bots.Any())
+    {
+        <div class="bots-empty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a4 4 0 0 0-4 4v2a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4Z"/>
+                <path d="M4 10a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2"/>
+            </svg>
+            <p class="bots-empty-title">@LBots["NoBotsFound"]</p>
+            <p class="bots-empty-desc">@LBots["NoBotsDesc"]</p>
+            <button class="bots-btn-primary" @onclick="OnOpenCreateModal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                @LBots["AddBot"]
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="bots-table-wrap">
+            <table class="bots-table">
+                <thead>
+                    <tr>
+                        <th class="bots-th">@LBots["ThName"]</th>
+                        <th class="bots-th">@LBots["ThChannels"]</th>
+                        <th class="bots-th">@LBots["ThActiveWorkflow"]</th>
+                        <th class="bots-th">@LBots["ThCreated"]</th>
+                        <th class="bots-th bots-th-actions">@LBots["ThActions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var bot in bots)
+                    {
+                        <tr class="bots-row">
+                            <td class="bots-td bots-td-name">@bot.Name</td>
+                            <td class="bots-td bots-td-muted">
+                                @{
+                                    var channelNames = bot.BotChannels?
+                                        .Where(bc => bc.Channel != null)
+                                        .Select(bc => bc.Channel!.Name)
+                                        .ToList() ?? new List<string>();
+                                    if (channelNames.Count == 0)
+                                    {
+                                        <span>—</span>
+                                    }
+                                    else if (channelNames.Count <= 2)
+                                    {
+                                        @string.Join(", ", channelNames)
+                                    }
+                                    else
+                                    {
+                                        <span title="@string.Join(", ", channelNames)">@string.Format(LBots["ChannelsCountBadge"].Value, channelNames.Count)</span>
+                                    }
+                                }
+                            </td>
+                            <td class="bots-td">
+                                @{
+                                    var activeWorkflow = bot.Workflows?.FirstOrDefault(w => w.IsActiveBotWorkflow);
+                                    if (activeWorkflow != null)
+                                    {
+                                        <span class="bots-badge bots-badge-success">v@(activeWorkflow.Version)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="bots-badge bots-badge-neutral">@LBots["NoBadge"]</span>
+                                    }
+                                }
+                            </td>
+                            <td class="bots-td bots-td-date">@bot.CreatedAt.ToLocalTime().ToString("g")</td>
+                            <td class="bots-td bots-td-actions">
+                                <a href="@($"bots/{bot.Id}")" class="bots-btn-link" title="@LBots["BtnOpen"]">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    @LBots["BtnOpen"]
+                                </a>
+                                <button class="bots-btn-icon bots-btn-icon-danger" @onclick="() => OpenDeleteConfirm(bot)" title="@LBots["BtnDelete"]">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+
+@if (showModal)
+{
+    <div class="bots-modal-backdrop" @onclick="CloseModal"></div>
+    <div class="bots-modal">
+        <div class="bots-modal-header">
+            <h3 class="bots-modal-title">@(isEditMode ? LBots["ModalTitleEdit"] : LBots["ModalTitleNew"])</h3>
+            <button type="button" class="bots-modal-close" @onclick="CloseModal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="bots-modal-body">
+            @if (!string.IsNullOrWhiteSpace(modalError))
+            {
+                <div class="bots-modal-error" role="alert">
+                    @modalError
+                </div>
+            }
+            <div class="bots-field">
+                <label class="bots-label">@LBots["LabelBotName"]</label>
+                <input type="text" class="bots-input" @bind="currentBotModel.Name" placeholder="My Super Bot" />
+            </div>
+            <div class="bots-field">
+                <label class="bots-label">@LBots["LabelChannels"]</label>
+                @if (availableChannels.Count == 0)
+                {
+                    <p class="bots-hint">@((MarkupString)LBots["NoAvailableChannels"].Value)</p>
+                }
+                else
+                {
+                    <div class="bots-channels-box">
+                        @foreach (var ch in availableChannels)
+                        {
+                            <label class="bots-check-item">
+                                <input type="checkbox" checked="@currentBotModel.SelectedChannelIds.Contains(ch.Id)" @onchange="() => ToggleChannel(ch.Id)" />
+                                <span>@ch.Name <span class="bots-check-muted">(@ch.ChannelType)</span></span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="bots-modal-footer">
+            <button type="button" class="bots-btn-secondary" @onclick="CloseModal">@LBots["BtnCancel"]</button>
+            <button type="button" class="bots-btn-save" @onclick="SaveBot" disabled="@(isSaving || string.IsNullOrWhiteSpace(currentBotModel.Name))">
+                @if (isSaving) { <div class="bots-spinner" style="width:18px;height:18px;border-width:2px;"></div> }
+                @LBots["BtnSave"]
+            </button>
+        </div>
+    </div>
+}
+
+@if (showDeleteConfirm && botToDelete != null)
+{
+    <div class="bots-modal-backdrop bots-modal-backdrop-confirm" @onclick="CloseDeleteConfirm"></div>
+    <div class="bots-modal bots-modal-confirm" role="dialog" aria-modal="true" aria-labelledby="bots-delete-title">
+        <div class="bots-modal-header">
+            <h3 class="bots-modal-title" id="bots-delete-title">@LBots["DeleteConfirmTitle"]</h3>
+            <button type="button" class="bots-modal-close" @onclick="CloseDeleteConfirm" aria-label="@LBots["BtnCancel"]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="bots-modal-body">
+            <p class="bots-modal-text">@((MarkupString)string.Format(LBots["DeleteConfirmText"].Value, botToDelete.Name))</p>
+        </div>
+        <div class="bots-modal-footer">
+            <button type="button" class="bots-btn-secondary" @onclick="CloseDeleteConfirm" disabled="@isDeleting">@LBots["BtnCancel"]</button>
+            <button type="button" class="bots-btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isDeleting">
+                @if (isDeleting) { <div class="bots-spinner" style="width:18px;height:18px;border-width:2px;border-top-color:#fff;"></div> }
+                @LBots["BtnDelete"]
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BotDto> bots = new();
+    private List<ChannelDto> availableChannels = new();
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? error;
+    private string? modalError;
+
+    private bool showModal;
+    private bool isEditMode;
+    private BotInputModel currentBotModel = new();
+
+    private bool showDeleteConfirm;
+    private BotDto? botToDelete;
+    private bool isDeleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBots();
+    }
+
+    private async Task LoadBots()
+    {
+        isLoading = true;
+        error = null;
+        try
+        {
+            bots = await ApiClient.GetBotsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = string.Format(LBots["LoadError"].Value, ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadChannelsForModal()
+    {
+        try
+        {
+            availableChannels = await ApiClient.GetChannelsAsync();
+        }
+        catch
+        {
+            availableChannels = new List<ChannelDto>();
+        }
+    }
+
+    private void ToggleChannel(Guid channelId)
+    {
+        if (currentBotModel.SelectedChannelIds.Contains(channelId))
+            currentBotModel.SelectedChannelIds.Remove(channelId);
+        else
+            currentBotModel.SelectedChannelIds.Add(channelId);
+        StateHasChanged();
+    }
+
+    private async Task SaveBot()
+    {
+        if (string.IsNullOrWhiteSpace(currentBotModel.Name))
+            return;
+
+        isSaving = true;
+        modalError = null;
+        try
+        {
+            var channelIds = currentBotModel.SelectedChannelIds.ToList();
+            if (isEditMode)
+                await ApiClient.UpdateBotAsync(currentBotModel.Id, currentBotModel.Name.Trim(), channelIds);
+            else
+                await ApiClient.AddBotAsync(currentBotModel.Name.Trim(), channelIds);
+
+            CloseModal();
+            await LoadBots();
+        }
+        catch (Exception ex)
+        {
+            modalError = BuildBotSaveErrorMessage(ex);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void OpenDeleteConfirm(BotDto bot)
+    {
+        botToDelete = bot;
+        showDeleteConfirm = true;
+    }
+
+    private void CloseDeleteConfirm()
+    {
+        if (isDeleting) return;
+        showDeleteConfirm = false;
+        botToDelete = null;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (botToDelete == null) return;
+
+        isDeleting = true;
+        try
+        {
+            await ApiClient.DeleteBotAsync(botToDelete.Id);
+            showDeleteConfirm = false;
+            botToDelete = null;
+            await LoadBots();
+        }
+        catch (Exception ex)
+        {
+            error = string.Format(LBots["DeleteError"].Value, ex.Message);
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private async Task OnOpenCreateModal()
+    {
+        currentBotModel = new BotInputModel();
+        isEditMode = false;
+        modalError = null;
+        showModal = true;
+        await LoadChannelsForModal();
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        modalError = null;
+    }
+
+    private string BuildBotSaveErrorMessage(Exception ex)
+    {
+        var rawMessage = ex.Message;
+        var normalizedMessage = TryExtractGraphQlErrorMessage(rawMessage) ?? rawMessage;
+
+        var quotaMatch = Regex.Match(
+            normalizedMessage,
+            @"Quota exceeded \(bots\)\. Limit:\s*(\d+),\s*used:\s*(\d+)\.",
+            RegexOptions.IgnoreCase);
+
+        if (quotaMatch.Success)
+        {
+            var limit = quotaMatch.Groups[1].Value;
+            var used = quotaMatch.Groups[2].Value;
+            return string.Format(LBots["QuotaExceededDetail"].Value, used, limit);
+        }
+
+        if (normalizedMessage.Contains("Quota exceeded", StringComparison.OrdinalIgnoreCase))
+        {
+            return LBots["QuotaExceededGeneral"].Value;
+        }
+
+        if (normalizedMessage.Contains("Arg_NullReferenceException", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMessage.Contains("NullReferenceException", StringComparison.OrdinalIgnoreCase) ||
+            normalizedMessage.Contains("Object reference not set", StringComparison.OrdinalIgnoreCase))
+        {
+            return LBots["InternalError"].Value;
+        }
+
+        return string.Format(LBots["SaveErrorGeneric"].Value, normalizedMessage);
+    }
+
+    private static string? TryExtractGraphQlErrorMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
+
+        var jsonStartIndex = message.IndexOf("{\"errors\"", StringComparison.OrdinalIgnoreCase);
+        if (jsonStartIndex < 0)
+            return null;
+
+        var jsonPayload = message[jsonStartIndex..];
+        try
+        {
+            using var jsonDocument = JsonDocument.Parse(jsonPayload);
+            if (!jsonDocument.RootElement.TryGetProperty("errors", out var errors) ||
+                errors.ValueKind != JsonValueKind.Array ||
+                errors.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var firstError = errors[0];
+            if (firstError.TryGetProperty("message", out var gqlMessage) &&
+                gqlMessage.ValueKind == JsonValueKind.String)
+            {
+                return gqlMessage.GetString();
+            }
+        }
+        catch
+        {
+            // Ignore malformed payload and fallback to original exception message.
+        }
+
+        return null;
+    }
+
+    private class BotInputModel
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public List<Guid> SelectedChannelIds { get; set; } = new();
+    }
+}

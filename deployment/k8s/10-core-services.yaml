@@ -1,0 +1,246 @@
+﻿# ==========================================
+# 1. Identity Service (Replicas: 2)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+  namespace: chatfoundry
+  labels:
+    app: identity-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: grpc
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: identity-service
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  namespace: chatfoundry
+  labels:
+    app: identity-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: identity-service
+  template:
+    metadata:
+      labels:
+        app: identity-service
+    spec:
+      containers:
+      - name: identity-service
+        image: ghcr\.io/grom1101/chatfoundry/identity-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: grpc
+          containerPort: 8081
+        envFrom:
+        - configMapRef:
+            name: chatfoundry-common-config
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Port=5432;Database=foundry_db_identity;Username=foundry;Password=foundry"
+        - name: OpenIddict__EncryptionKey
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: OpenIddict__EncryptionKey
+        - name: OpenIddict__SigningCertificate
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: OpenIddict__SigningCertificate
+        - name: OpenIddict__SigningCertificatePassword
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: OpenIddict__SigningCertificatePassword
+        - name: Smtp__Password
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: Smtp__Password
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 384Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+# ==========================================
+# 2. Company Service (Replicas: 2)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: company-service
+  namespace: chatfoundry
+  labels:
+    app: company-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: grpc
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: company-service
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: company-service
+  namespace: chatfoundry
+  labels:
+    app: company-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: company-service
+  template:
+    metadata:
+      labels:
+        app: company-service
+    spec:
+      containers:
+      - name: company-service
+        image: ghcr\.io/grom1101/chatfoundry/company-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: grpc
+          containerPort: 8081
+        envFrom:
+        - configMapRef:
+            name: chatfoundry-common-config
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Port=5432;Database=foundry_db_company;Username=foundry;Password=foundry"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 384Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+---
+# ==========================================
+# 3. Client Service (Replicas: 2)
+# ==========================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-service
+  namespace: chatfoundry
+  labels:
+    app: client-service
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: grpc
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: client-service
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-service
+  namespace: chatfoundry
+  labels:
+    app: client-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: client-service
+  template:
+    metadata:
+      labels:
+        app: client-service
+    spec:
+      containers:
+      - name: client-service
+        image: ghcr\.io/grom1101/chatfoundry/client-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: grpc
+          containerPort: 8081
+        envFrom:
+        - configMapRef:
+            name: chatfoundry-common-config
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Port=5432;Database=foundry_db_client;Username=foundry;Password=foundry"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 384Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10

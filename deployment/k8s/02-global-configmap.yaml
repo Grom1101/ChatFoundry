@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatfoundry-common-config
+  namespace: chatfoundry
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080;http://+:8081"
+  ASPNETCORE_Kestrel__Endpoints__Http__Url: "http://+:8080"
+  ASPNETCORE_Kestrel__Endpoints__Http__Protocols: "Http1"
+  ASPNETCORE_Kestrel__Endpoints__Grpc__Url: "http://+:8081"
+  ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols: "Http2"
+  ConnectionStrings__Kafka: "kafka:9092"
+  ConnectionStrings__Redis: "redis:6379"
+  Services__BillingServiceGrpc: "http://billing-service:8081"
+  CompanyService__GrpcAddress: "http://company-service:8081"
+  IdentityService__GrpcAddress: "http://identity-service:8081"
+  Gateway__Url: "https://probable-dogfish-known.ngrok-free.app"
+  LlmProviders__OpenAiCompatible__2__ApiUrl: "http://freellmapi-service:3001/v1/chat/completions"
+  LlmProviders__OpenAiCompatible__2__Model: "auto"
+  Observability__Seq__Url: "http://seq:5341"
+  Observability__Jaeger__Endpoint: "http://jaeger:4317"
+  Cors__AllowedOrigins__0: "https://chatfoundry.dpdns.org"
+  Cors__AllowedOrigins__1: "https://localhost:7555"
+  Cors__AllowedOrigins__2: "http://localhost:7555"
+  Cors__AllowedOrigins__3: "http://localhost"
+  Cors__AllowedOrigins__4: "https://localhost"
+  Cors__AllowedOrigins__5: "http://localhost:5000"
+  Cors__AllowedOrigins__6: "https://localhost:5000"
+  Cors__AllowedOrigins__7: "https://probable-dogfish-known.ngrok-free.app"

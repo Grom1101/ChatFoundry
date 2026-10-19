@@ -1,0 +1,1914 @@
+@page "/designer/{WorkflowId:guid}"
+@using Blazor.Diagrams.Components
+@attribute [Authorize]
+@using Blazor.Diagrams.Components.Widgets
+@using Blazor.Diagrams.Core.Models
+@using BlazorClient.Models.Diagram
+@using Microsoft.AspNetCore.Authorization
+@using BlazorClient.Components
+@layout DesignerLayout
+
+<PageTitle>@LDesigner["PageTitleWorkflowEditor"]</PageTitle>
+
+<div class="designer-page-container">
+    <!-- Левая панель с узлами (референс code.html) -->
+    <aside class="designer-sidebar">
+        <div class="sidebar-brand">
+            <a href="/" class="sidebar-brand-logo" title="ChatFoundry">
+                <span class="sidebar-brand-icon sidebar-brand-icon--svg">
+                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                        <rect width="28" height="28" rx="7" fill="url(#sidebar-logo-grad)" />
+                        <path d="M8 10.5C8 9.67 8.67 9 9.5 9H18.5C19.33 9 20 9.67 20 10.5V16.5C20 17.33 19.33 18 18.5 18H13L10 21V18H9.5C8.67 18 8 17.33 8 16.5V10.5Z" fill="white" opacity="0.95"/>
+                        <circle cx="12" cy="13.5" r="1" fill="url(#sidebar-logo-grad)"/>
+                        <circle cx="16" cy="13.5" r="1" fill="url(#sidebar-logo-grad)"/>
+                        <defs>
+                            <linearGradient id="sidebar-logo-grad" x1="0" y1="0" x2="28" y2="28">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </span>
+            </a>
+            <span class="sidebar-brand-text">ChatFoundry</span>
+        </div>
+        <div class="sidebar-search">
+            <span class="sidebar-search-icon oi oi-magnifying-glass"></span>
+            <input type="text" class="sidebar-search-input" placeholder="@LDesigner["SearchNodesPlaceholder"]" 
+                   @bind="NodeSearchQuery" @bind:event="oninput" />
+        </div>
+        <div class="sidebar-content">
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">@LDesigner["SectionLogic"]</h3>
+                <div class="node-list">
+                    @foreach (var item in GetFilteredNodeTools().Where(x => x.Section == LDesigner["SectionLogic"].Value))
+                    {
+                        <div class="node-tool" draggable="true" @ondragstart="e => OnDragStart(e, item.Type)">
+                            <span class="node-tool-icon node-tool-icon--@item.IconClass">@((MarkupString)item.IconSvg)</span>
+                            <span class="node-tool-label">@item.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">@LDesigner["SectionContent"]</h3>
+                <div class="node-list">
+                    @foreach (var item in GetFilteredNodeTools().Where(x => x.Section == LDesigner["SectionContent"].Value))
+                    {
+                        <div class="node-tool" draggable="true" @ondragstart="e => OnDragStart(e, item.Type)">
+                            <span class="node-tool-icon node-tool-icon--@item.IconClass">@((MarkupString)item.IconSvg)</span>
+                            <span class="node-tool-label">@item.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <h3 class="sidebar-section-title">@LDesigner["SectionAiIntegrations"]</h3>
+                <div class="node-list">
+                    @foreach (var item in GetFilteredNodeTools().Where(x => x.Section == LDesigner["SectionAiIntegrations"].Value))
+                    {
+                        <div class="node-tool" draggable="true" @ondragstart="e => OnDragStart(e, item.Type)">
+                            <span class="node-tool-icon node-tool-icon--@item.IconClass">@((MarkupString)item.IconSvg)</span>
+                            <span class="node-tool-label">@item.Label</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Основная область: топ-бар + канвас -->
+    <main class="designer-main">
+        <header class="designer-header">
+            <div class="designer-header-left">
+                <span class="designer-workflow-title">@LDesigner["PageTitleWorkflowEditor"]</span>
+                <span class="designer-badge">Editor</span>
+                <span class="designer-header-divider"></span>
+                <span class="designer-last-saved">@LastSavedText</span>
+            </div>
+            <div class="designer-header-right">
+                <div class="designer-undo-redo">
+                    <button type="button" class="designer-undo-btn" @onclick="Undo" disabled="@(_undoIndex <= 0)" title="@LDesigner["BackLabel"]">
+                        <span class="oi oi-arrow-left"></span>
+                    </button>
+                    <button type="button" class="designer-redo-btn" @onclick="Redo" disabled="@(_undoIndex >= _undoStack.Count - 1)" title="@LDesigner["RedoBtnTooltip"]">
+                        <span class="oi oi-arrow-right"></span>
+                    </button>
+                </div>
+                <button type="button" class="designer-btn-secondary" @onclick="OpenVariablesModal" title="@LDesigner["AttributesParamsBtnTooltip"]">
+                    <span class="oi oi-code"></span> @LDesigner["AttributesParamsBtn"]
+                </button>
+                <div class="designer-json-dropdown">
+                    <button type="button" class="designer-btn-secondary" @onclick="() => _jsonMenuOpen = !_jsonMenuOpen" title="@LDesigner["SchemaBtnTooltip"]">
+                        <span class="oi oi-document"></span> @LDesigner["SchemaBtn"] <span class="oi oi-chevron-bottom"></span>
+                    </button>
+                    @if (_jsonMenuOpen)
+                    {
+                        <div class="designer-json-dropdown-backdrop" @onclick="() => _jsonMenuOpen = false"></div>
+                        <ul class="dropdown-menu dropdown-menu-end show">
+                            <li><button type="button" class="dropdown-item" @onclick="CloseJsonMenuAndDownload"><span class="oi oi-data-transfer-download"></span> @LDesigner["DownloadBtn"]</button></li>
+                            <li><button type="button" class="dropdown-item" @onclick="TriggerImportJsonFile"><span class="oi oi-data-transfer-upload"></span> @LDesigner["UploadBtn"]</button></li>
+                        </ul>
+                    }
+                </div>
+                <div id="workflow-json-file-wrap" class="d-none">
+                    <InputFile accept=".json,application/json" OnChange="OnImportWorkflowJson" />
+                </div>
+                <button type="button" class="designer-btn-secondary" @onclick="OpenAiModal" title="@LDesigner["GenerateAiBtnTooltip"]">
+                    <span class="oi oi-lightbulb"></span> AI
+                </button>
+                <button type="button" class="designer-btn-primary designer-header-save" @onclick="SaveWorkflow" title="@LDesigner["SaveBtnTooltip"]">
+                    <span class="oi oi-circle-check"></span> @LDesigner["SaveBtn"]
+                </button>
+            </div>
+        </header>
+        @if (!string.IsNullOrEmpty(_loadError))
+        {
+            <div class="alert alert-danger m-3" role="alert">
+                @_loadError
+            </div>
+        }
+        <div id="designer-canvas-area" class="canvas-area" 
+             @ondrop="OnDrop" 
+             @ondragover="OnDragOver" 
+             @ondragover:preventDefault="true">
+            <CascadingValue Value="Diagram">
+                <CascadingValue Name="WorkflowNodePreviewFormatter" Value="@FormatPreviewForNodeWidget" IsFixed="true">
+                <DiagramCanvas class="designer-canvas">
+                    <Widgets>
+                        <GridWidget Size="24" Mode="GridMode.Point" BackgroundColor="#ffffff"/>
+                        <SelectionBoxWidget/>
+                    </Widgets>
+                </DiagramCanvas>
+                </CascadingValue>
+            </CascadingValue>
+
+            <!-- Зум: слева снизу -->
+            <div class="designer-zoom-controls">
+                <button type="button" class="designer-zoom-btn" @onclick="ZoomOut" title="@LDesigner["ZoomOutTooltip"]">
+                    <span class="oi oi-minus"></span>
+                </button>
+                <span class="designer-zoom-value">@(ZoomPercent)%</span>
+                <button type="button" class="designer-zoom-btn" @onclick="ZoomIn" title="@LDesigner["ZoomInTooltip"]">
+                    <span class="oi oi-plus"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Панель настроек узла (справа, референс code.html) -->
+        @if (SelectedModel != null)
+        {
+            <div class="designer-settings-panel" @onpointerenter="OnSettingsPanelPointerEnter">
+            <div class="panel-header">
+                <h6>@LDesigner["SettingsTitle"]</h6>
+                <button type="button" class="btn-close" @onclick="() => SelectedModel = null"></button>
+            </div>
+            <div class="panel-body">
+                @if (SelectedModel is NodeModel node)
+                {
+                    <div class="mb-3">
+                        <label class="form-label">@LDesigner["LabelTitle"]</label>
+                        <input type="text" class="form-control" @bind-value="node.Title" @bind-value:event="oninput"/>
+                    </div>
+
+                    @if (node is WorkflowNodeModel { Data: MessageNodeData msgData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["LabelMsgText"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(msgData, nameof(msgData.Text), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <textarea class="form-control font-monospace variable-input" 
+                                      value="@ToDisplayText(msgData.Text)"
+                                      @oninput="e => { UpdateFieldAndCheckAtMention(e, msgData, nameof(msgData.Text)); OnWorkflowChanged(); }"
+                                      rows="4"></textarea>
+                            <small class="form-text text-muted">
+                                @((MarkupString)string.Format(LDesigner["EnterAtToSelectVarOrManual"].Value, "<kbd>@@</kbd>", "<code>{{variable_name}}</code>"))
+                            </small>
+                        </div>
+                        <div class="mb-3 border-top pt-3 mt-3">
+                            <label class="form-label d-block fw-bold">@LDesigner["LabelRecipientTitle"]</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientSession_@node.Id" 
+                                       checked="@(!msgData.SendToCustomRecipient)" 
+                                       @onclick="() => SetRecipientToSession(msgData)" />
+                                <label class="form-check-label" for="recipientSession_@node.Id">
+                                    @LDesigner["RecipientCurrentSession"]
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientCustom_@node.Id" 
+                                       checked="@msgData.SendToCustomRecipient" 
+                                       @onclick="() => OpenClientPicker(msgData)" />
+                                <label class="form-check-label" for="recipientCustom_@node.Id">
+                                    @LDesigner["RecipientCustomClient"]
+                                </label>
+                            </div>
+                            @if (msgData.SendToCustomRecipient)
+                            {
+                                <div class="p-2 border rounded bg-light d-flex justify-content-between align-items-center mt-2">
+                                    <span class="small">
+                                        @if (msgData.CustomRecipientClientChannelId.HasValue && _recipientDetailsCache.TryGetValue(msgData.CustomRecipientClientChannelId.Value, out var details))
+                                        {
+                                            <strong>@details.ClientDisplayName</strong> <span class="text-muted">(@details.Channel.Channel: @(details.Channel.Username ?? details.Channel.Phone ?? details.Channel.Email ?? details.Channel.ExternalUserId))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger">@LDesigner["RecipientNotSelected"]</span>
+                                        }
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenClientPicker(msgData)">
+                                        @LDesigner["BtnSelect"]
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: AskNodeData askData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["LabelQuestionText"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(askData, nameof(askData.Text), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <textarea class="form-control font-monospace variable-input" 
+                                      value="@ToDisplayText(askData.Text)"
+                                      @oninput="e => { UpdateFieldAndCheckAtMention(e, askData, nameof(askData.Text)); OnWorkflowChanged(); }"
+                                      rows="4"></textarea>
+                            <small class="form-text text-muted">
+                                @((MarkupString)string.Format(LDesigner["EnterAtToSelectVarOrManual"].Value, "<kbd>@@</kbd>", "<code>{{variable_name}}</code>"))
+                            </small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["LabelButtonsUnderMsg"]</label>
+                            @if (askData.Ui?.Buttons != null)
+                            {
+                                @foreach (var btn in askData.Ui.Buttons.ToList())
+                                {
+                                    <div class="designer-ask-button-row">
+                                        <input type="text"
+                                               class="form-control designer-ask-button-input"
+                                               placeholder="@LDesigner["PlaceholderBtnText"]"
+                                               value="@ToDisplayText(btn.Text)"
+                                               @oninput="e => { btn.Text = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"/>
+                                        <button type="button" class="designer-ask-remove" title="@LDesigner["DeleteBtnTooltip"]" @onclick="() => RemoveAskButton(askData, btn)">
+                                            <span class="oi oi-trash"></span>
+                                        </button>
+                                    </div>
+                                }
+                            }
+                            <button type="button" class="designer-ask-add" @onclick="() => AddAskButton(askData)">
+                                <span class="oi oi-plus"></span> @LDesigner["AddBtn"]
+                            </button>
+                            <small class="form-text text-muted d-block mt-1">
+                                @LDesigner["ButtonsHint"]
+                            </small>
+                        </div>
+                        <div class="mb-3 border-top pt-3 mt-3">
+                            <label class="form-label d-block fw-bold">@LDesigner["LabelRecipientTitle"]</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientSession_@node.Id" 
+                                       checked="@(!askData.SendToCustomRecipient)" 
+                                       @onclick="() => SetRecipientToSession(askData)" />
+                                <label class="form-check-label" for="recipientSession_@node.Id">
+                                    @LDesigner["RecipientCurrentSession"]
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientCustom_@node.Id" 
+                                       checked="@askData.SendToCustomRecipient" 
+                                       @onclick="() => OpenClientPicker(askData)" />
+                                <label class="form-check-label" for="recipientCustom_@node.Id">
+                                    @LDesigner["RecipientCustomClient"]
+                                </label>
+                            </div>
+                            @if (askData.SendToCustomRecipient)
+                            {
+                                <div class="p-2 border rounded bg-light d-flex justify-content-between align-items-center mt-2">
+                                    <span class="small">
+                                        @if (askData.CustomRecipientClientChannelId.HasValue && _recipientDetailsCache.TryGetValue(askData.CustomRecipientClientChannelId.Value, out var details))
+                                        {
+                                            <strong>@details.ClientDisplayName</strong> <span class="text-muted">(@details.Channel.Channel: @(details.Channel.Username ?? details.Channel.Phone ?? details.Channel.Email ?? details.Channel.ExternalUserId))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger">@LDesigner["RecipientNotSelected"]</span>
+                                        }
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenClientPicker(askData)">
+                                        @LDesigner["BtnSelect"]
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: SetAttributeNodeData attrData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["LabelAttributeKey"]</label>
+                            <select class="form-select font-monospace" 
+                                    value="@NormalizeAttributeKey(attrData.Attribute)"
+                                    @onchange="@(e => OnAttributeKeyChanged(attrData, e))">
+                                <option value="">— @LDesigner["SelectAttributeOption"] —</option>
+                                @foreach (var key in GetAttributeKeysForDropdown())
+                                {
+                                    <option value="@key">@GetAttributeDropdownLabel(key)</option>
+                                }
+                            </select>
+                            <small class="form-text text-muted">
+                                @LDesigner["AttributesListHint"]
+                            </small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["LabelValue"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(attrData, nameof(attrData.Value), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <input type="text" 
+                                   class="form-control font-monospace" 
+                                   value="@ToDisplayText(attrData.Value)"
+                                   @oninput="e => { attrData.Value = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                   placeholder="@LDesigner["PlaceholderTextOrVar"]"/>
+                            <small class="form-text text-muted">
+                                @LDesigner["VariablesInTemplateHint"]
+                            </small>
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: HttpRequestNodeData httpData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["LabelMethod"]</label>
+                            <select class="form-select" @bind="httpData.Method">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>URL</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(httpData, nameof(httpData.Url), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <input type="text"
+                                   class="form-control font-monospace"
+                                   value="@ToDisplayText(httpData.Url)"
+                                   @oninput="e => { httpData.Url = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                   placeholder="https://api.example.com/data"/>
+                        </div>
+
+                        @if (httpData.Method == "POST" || httpData.Method == "PUT")
+                        {
+                            <div class="mb-3">
+                                <label class="form-label d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["LabelRequestBody"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                            @onclick="() => ShowVariablePicker(v => InsertVariable(httpData, nameof(httpData.Body), v))">
+                                        <span class="oi oi-code"></span> {}
+                                    </button>
+                                </label>
+                                <textarea class="form-control font-monospace"
+                                          rows="5"
+                                          value="@ToDisplayText(httpData.Body)"
+                                          @oninput="e => { httpData.Body = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                          placeholder='{"key": "{{variable_name}}"}'></textarea>
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["LabelHeaders"]</label>
+                            <div class="designer-header-list">
+                                @foreach (var header in httpData.Headers.ToList())
+                                {
+                                    var isExpanded = _expandedHeaderKey == header.Key;
+                                    <div class="designer-header-item @(isExpanded ? "designer-header-item--open" : "")">
+                                        <div class="designer-header-item-row">
+                                            <button type="button" class="designer-header-toggle" title="@LDesigner["LabelValue"]"
+                                                    @onclick="() => { _expandedHeaderKey = isExpanded ? null : header.Key; }">
+                                                <span class="oi oi-chevron-bottom"></span>
+                                            </button>
+                                            <input type="text"
+                                                   class="designer-header-name-input"
+                                                   placeholder="Content-Type"
+                                                   value="@header.Key"
+                                                   @onchange="@(e => { var newKey = e.Value?.ToString() ?? ""; if (!string.IsNullOrWhiteSpace(newKey) && newKey != header.Key) { var val = httpData.Headers[header.Key]; httpData.Headers.Remove(header.Key); httpData.Headers[newKey] = val; if (_expandedHeaderKey == header.Key) _expandedHeaderKey = newKey; OnWorkflowChanged(); } })"/>
+                                            <button type="button" class="designer-header-remove" title="@LDesigner["DeleteHeaderTooltip"]"
+                                                    @onclick="() => { if (_expandedHeaderKey == header.Key) _expandedHeaderKey = null; RemoveHeader(httpData, header.Key); }">
+                                                <span class="oi oi-x"></span>
+                                            </button>
+                                        </div>
+                                        @if (isExpanded)
+                                        {
+                                            <div class="designer-header-value-area">
+                                                <div class="designer-header-value-wrap">
+                                                    <input type="text"
+                                                           class="form-control font-monospace designer-header-value-input"
+                                                           placeholder="application/json"
+                                                           value="@ToDisplayText(httpData.Headers[header.Key])"
+                                                           @oninput="e => { httpData.Headers[header.Key] = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }" />
+                                                    <button type="button" class="designer-header-var-btn"
+                                                            title="@LDesigner["InsertVariableTooltip"]"
+                                                            @onclick="() => ShowVariablePicker(v => InsertVariableIntoMapping(httpData.Headers, header.Key, v))">
+                                                        <span class="oi oi-code"></span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <button type="button" class="designer-header-add" @onclick="() => AddHeader(httpData)">
+                                <span class="oi oi-plus"></span> @LDesigner["AddHeaderBtn"]
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="http-continue-on-error-@node.Id"
+                                       checked="@httpData.ContinueOnError"
+                                       @onchange="e => { httpData.ContinueOnError = GetCheckboxChecked(e); OnWorkflowChanged(); }"/>
+                                <label class="form-check-label" for="http-continue-on-error-@node.Id">@LDesigner["ContinueOnErrorLabel"]</label>
+                            </div>
+                            <small class="form-text text-muted">@LDesigner["ContinueOnErrorHintHttp"]</small>
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: AIGenerateNodeData aiData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["AiPromptLabel"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(aiData, nameof(aiData.Prompt), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <textarea class="form-control font-monospace" 
+                                      value="@ToDisplayText(aiData.Prompt)"
+                                      @oninput="e => { aiData.Prompt = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                      rows="6"></textarea>
+                            <small class="form-text text-muted">
+                                @((MarkupString)string.Format(LDesigner["AiPromptHint"].Value, "<code>{{variable_name}}</code>"))
+                            </small>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="ai-include-context-@node.Id"
+                                       checked="@aiData.IncludeChatContext"
+                                       @onchange="e => { aiData.IncludeChatContext = GetCheckboxChecked(e); OnWorkflowChanged(); }"/>
+                                <label class="form-check-label" for="ai-include-context-@node.Id">@LDesigner["AiIncludeContextLabel"]</label>
+                            </div>
+                            <small class="form-text text-muted">@LDesigner["AiIncludeContextHint"]</small>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="ai-continue-on-error-@node.Id"
+                                       checked="@aiData.ContinueOnError"
+                                       @onchange="e => { aiData.ContinueOnError = GetCheckboxChecked(e); OnWorkflowChanged(); }"/>
+                                <label class="form-check-label" for="ai-continue-on-error-@node.Id">@LDesigner["ContinueOnErrorLabel"]</label>
+                            </div>
+                            <small class="form-text text-muted">@LDesigner["ContinueOnErrorHintAi"]</small>
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: MediaNodeData mediaData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["UploadFileLabel"]</label>
+                            <InputFile class="form-control" OnChange="@(e => OnMediaFileSelected(e, mediaData))"/>
+                            <small class="form-text text-muted">@LDesigner["UploadFileHint"]</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                @LDesigner["OrChooseFromStoragePrefix"] <a href="#" class="storage-picker-link" @onclick="() => OpenStoragePicker(mediaData)" @onclick:preventDefault>@LDesigner["StorageLinkText"]</a>
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["CurrentKeyFileId"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => ShowVariablePicker(v => InsertVariableReplacing(mediaData, nameof(mediaData.Value), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <input type="text" class="form-control font-monospace"
+                                   value="@ToDisplayText(mediaData.Value)"
+                                   @oninput="e => { mediaData.Value = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                   placeholder="@LDesigner["PlaceholderFileIdOrVar"]"/>
+                            <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["VariablesSupportedHint"].Value, "<code>{{variable_name}}</code>"))</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label d-flex justify-content-between align-items-center">
+                                <span>@LDesigner["CaptionLabel"]</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => ShowVariablePicker(v => InsertVariable(mediaData, nameof(mediaData.Caption), v))">
+                                    <span class="oi oi-code"></span> {}
+                                </button>
+                            </label>
+                            <textarea class="form-control font-monospace" rows="2"
+                                      value="@ToDisplayText(mediaData.Caption)"
+                                      @oninput="e => { mediaData.Caption = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }"
+                                      placeholder="@LDesigner["PlaceholderOptional"]"></textarea>
+                            <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["VariablesSupportedHint"].Value, "<code>{{variable_name}}</code>"))</small>
+                        </div>
+                        <div class="mb-3 border-top pt-3 mt-3">
+                            <label class="form-label d-block fw-bold">@LDesigner["LabelRecipientTitle"]</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientSession_@node.Id" 
+                                       checked="@(!mediaData.SendToCustomRecipient)" 
+                                       @onclick="() => SetRecipientToSession(mediaData)" />
+                                <label class="form-check-label" for="recipientSession_@node.Id">
+                                    @LDesigner["RecipientCurrentSession"]
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="recipientType_@node.Id" id="recipientCustom_@node.Id" 
+                                       checked="@mediaData.SendToCustomRecipient" 
+                                       @onclick="() => OpenClientPicker(mediaData)" />
+                                <label class="form-check-label" for="recipientCustom_@node.Id">
+                                    @LDesigner["RecipientCustomClient"]
+                                </label>
+                            </div>
+                            @if (mediaData.SendToCustomRecipient)
+                            {
+                                <div class="p-2 border rounded bg-light d-flex justify-content-between align-items-center mt-2">
+                                    <span class="small">
+                                        @if (mediaData.CustomRecipientClientChannelId.HasValue && _recipientDetailsCache.TryGetValue(mediaData.CustomRecipientClientChannelId.Value, out var details))
+                                        {
+                                            <strong>@details.ClientDisplayName</strong> <span class="text-muted">(@details.Channel.Channel: @(details.Channel.Username ?? details.Channel.Phone ?? details.Channel.Email ?? details.Channel.ExternalUserId))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger">@LDesigner["RecipientNotSelected"]</span>
+                                        }
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenClientPicker(mediaData)">
+                                        @LDesigner["BtnSelect"]
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: SubWorkflowNodeData subData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["CalledProcessLabel"]</label>
+                            @if (subData.WorkflowId != Guid.Empty && (AvailableWorkflows?.FirstOrDefault(w => w.Id == subData.WorkflowId)) is { } selectedW)
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="text-muted">@GetWorkflowDisplayName(selectedW)</span>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenProcessPicker(subData)">
+                                        <span class="oi oi-pencil"></span> @LDesigner["ChangeBtn"]
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    @if (subData.WorkflowId != Guid.Empty)
+                                    {
+                                        <span class="text-muted">@LDesigner["ProcessSelectedLabel"]</span>
+                                    }
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenProcessPicker(subData)">
+                                        <span class="oi @(subData.WorkflowId != Guid.Empty ? "oi-pencil" : "oi-plus")"></span> @(subData.WorkflowId != Guid.Empty ? LDesigner["ChangeBtn"] : LDesigner["ProcessPickerTitle"])
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        @if (subData.WorkflowId != Guid.Empty)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">@LDesigner["InputParams"]</label>
+                                <small class="form-text text-muted d-block mb-2">
+                                    @((MarkupString)string.Format(LDesigner["SubProcessInputParamsHint"].Value, "<code>{{variable}}</code>"))
+                                </small>
+                                @foreach (var mapping in subData.InputMappings.ToList())
+                                {
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text font-monospace" style="min-width:120px;">@mapping.Key</span>
+                                        <input type="text" class="form-control font-monospace"
+                                               value="@ToDisplayText(mapping.Value)"
+                                               placeholder="@LDesigner["PlaceholderVarOrValue"]"
+                                               @oninput="e => { subData.InputMappings[mapping.Key] = FromDisplayText(e.Value?.ToString() ?? string.Empty); OnWorkflowChanged(); }" />
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                @onclick="() => ShowVariablePicker(v => InsertVariableIntoMapping(subData.InputMappings, mapping.Key, v))">
+                                            <span class="oi oi-code"></span>
+                                        </button>
+                                    </div>
+                                }
+                                @if (!subData.InputMappings.Any())
+                                {
+                                    <p class="small text-muted">@LDesigner["SubProcessNoInputParamsHint"]</p>
+                                }
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">@LDesigner["OutputParams"]</label>
+                                <small class="form-text text-muted d-block mb-2">
+                                    @LDesigner["SubProcessOutputParamsHint"]
+                                </small>
+                                @foreach (var mapping in subData.OutputMappings.ToList())
+                                {
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">$</span>
+                                        <input type="text" class="form-control font-monospace" style="max-width:40%;"
+                                               value="@mapping.Key"
+                                               placeholder="@LDesigner["PlaceholderVariableOnly"]"
+                                               @oninput="e => { var newKey = e.Value?.ToString() ?? string.Empty; if (!string.IsNullOrWhiteSpace(newKey) && newKey != mapping.Key) { var val = subData.OutputMappings[mapping.Key]; subData.OutputMappings.Remove(mapping.Key); subData.OutputMappings[newKey] = val; OnWorkflowChanged(); } }" />
+                                        <span class="input-group-text">&#8592;</span>
+                                        <input type="text" class="form-control font-monospace"
+                                               value="@mapping.Value"
+                                               placeholder="@LDesigner["PlaceholderSubParam"]"
+                                               readonly
+                                               tabindex="-1" />
+                                    </div>
+                                }
+                                @if (!subData.OutputMappings.Any())
+                                {
+                                    <p class="small text-muted">@LDesigner["SubProcessNoOutputParamsHint"]</p>
+                                }
+                            </div>
+                        }
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: WaitNodeData waitData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["DurationLabel"]</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" min="1"
+                                       value="@waitData.Duration"
+                                       @oninput="e => { waitData.Duration = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }" />
+                                <select class="form-select" style="max-width:140px;"
+                                        value="@waitData.Unit"
+                                        @onchange="e => { waitData.Unit = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }">
+                                    <option value="Seconds">@LDesigner["UnitSeconds"]</option>
+                                    <option value="Minutes">@LDesigner["UnitMinutes"]</option>
+                                    <option value="Hours">@LDesigner["UnitHours"]</option>
+                                    <option value="Days">@LDesigner["UnitDays"]</option>
+                                </select>
+                            </div>
+                            <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["WaitDurationVariablesHint"].Value, "<code>{{$node.123.output}}</code>"))</small>
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: WebhookWaitNodeData webhookData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["WaitTimeoutLabel"]</label>
+                            <input type="number" class="form-control" min="0"
+                                   value="@webhookData.TimeoutSeconds"
+                                   @oninput="e => { if (int.TryParse(e.Value?.ToString(), out var seconds)) { webhookData.TimeoutSeconds = seconds; } else { webhookData.TimeoutSeconds = 0; } OnWorkflowChanged(); }"
+                                   placeholder="@LDesigner["WaitDurationPlaceholder"]" />
+                            <small class="form-text text-muted">@LDesigner["WaitTimeoutHint"]</small>
+                        </div>
+                        <div class="card bg-light border-0 mt-3" style="border-radius: 8px;">
+                            <div class="card-body p-3">
+                                <h6 class="card-title d-flex align-items-center gap-2 mb-2" style="font-size: 0.85rem; font-weight: 700; color: #1e293b;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                    Callback URL
+                                </h6>
+                                <p class="card-text mb-2" style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">
+                                    @LDesigner["CallbackUrlDescription"]
+                                </p>
+                                <div class="bg-white p-2 rounded border font-monospace mb-2" style="font-size: 0.7rem; color: #334155; word-break: break-all; border-color: #e2e8f0 !important;">
+                                    https://[base-url]/workflow/api/webhook/{botId}/{clientId}?channel={channel}
+                                </div>
+                                <ul style="font-size: 0.7rem; color: #475569; padding-left: 1.2rem; margin-bottom: 0;">
+                                    <li class="mb-1"><strong>[base-url]</strong> — @LDesigner["CallbackUrlBaseUrl"]</li>
+                                    <li class="mb-1"><strong>botId</strong> — @LDesigner["CallbackUrlBotId"]</li>
+                                    <li class="mb-1"><strong>clientId</strong> — @LDesigner["CallbackUrlClientId"]</li>
+                                    <li><strong>channel</strong> — @((MarkupString)LDesigner["CallbackUrlChannel"].Value)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    }
+
+                    @if (node is WorkflowNodeModel { Data: TimerStartNodeData timerData })
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["ScheduleTypeLabel"]</label>
+                            <select class="form-select"
+                                    value="@timerData.ScheduleType"
+                                    @onchange="e => { timerData.ScheduleType = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }">
+                                <option value="OneTime">@LDesigner["ScheduleTypeOneTime"]</option>
+                                <option value="Cron">@LDesigner["ScheduleTypeCron"]</option>
+                            </select>
+                        </div>
+
+                        @if (timerData.ScheduleType == "OneTime")
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">@LDesigner["DateTimeLabel"]</label>
+                                <input type="datetime-local" class="form-control"
+                                       value="@timerData.FireTimeUtc"
+                                       @oninput="e => { timerData.FireTimeUtc = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">@LDesigner["CronExpressionLabel"]</label>
+                                <input type="text" class="form-control font-monospace"
+                                       value="@timerData.CronExpression"
+                                       placeholder="0 0 10 * * ?"
+                                       @oninput="e => { timerData.CronExpression = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }" />
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["CronExampleHint"].Value, "<code>0 0 10 * * ?</code>"))</small>
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">@LDesigner["TimezoneLabel"]</label>
+                            <input type="text" class="form-control" list="tz-list"
+                                   value="@timerData.Timezone"
+                                   placeholder="@UserTimezone"
+                                   @oninput="e => { timerData.Timezone = e.Value?.ToString() ?? string.Empty; OnWorkflowChanged(); }" />
+                            <datalist id="tz-list">
+                                @foreach (var tz in CommonTimezones)
+                                {
+                                    var offset = TimezoneOffsets.GetValueOrDefault(tz.Id, "");
+                                    <option value="@tz.Id">@tz.Label (@offset)</option>
+                                }
+                            </datalist>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">@LDesigner["ClientFilterLabel"]</label>
+                            <small class="form-text text-muted d-block mb-2">
+                                @LDesigner["ClientFilterHint"]
+                            </small>
+
+                            @if (AvailableChannels.Count > 0)
+                            {
+                                <div class="card p-3 mb-2 border-secondary shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="small fw-bold">@LDesigner["ChannelsLabel"]</span>
+                                    </div>
+                                    <div class="d-flex flex-column gap-2">
+                                        @foreach (var ch in AvailableChannels)
+                                        {
+                                            var isSelected = timerData.ClientFilter?.Channels?.Contains(ch.Id) == true;
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="@($"ch-{ch.Id}")" checked="@isSelected"
+                                                       @onchange="e => {
+                                                           timerData.ClientFilter ??= new ClientFilterCriteria();
+                                                           var isChecked = e.Value is bool b && b;
+                                                           if (isChecked)
+                                                               timerData.ClientFilter.Channels.Add(ch.Id);
+                                                           else
+                                                               timerData.ClientFilter.Channels.RemoveAll(x => x == ch.Id);
+                                                           OnWorkflowChanged();
+                                                       }" />
+                                                <label class="form-check-label d-flex align-items-center gap-1" for="@($"ch-{ch.Id}")">
+                                                    @ch.Name
+                                                    <span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size:0.7rem;">@ch.ChannelType</span>
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            <div class="mb-2">
+                                <label class="form-label">@LDesigner["AttributeConditionsLabel"]</label>
+                                @if (timerData.ClientFilter != null && timerData.ClientFilter.AttributeConditions.Count > 0)
+                                {
+                                    <div class="mb-2">
+                                        <span class="small text-muted">@GetFilterLogicLabel(timerData.ClientFilter.Logic)</span>
+                                        <div class="mt-1">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetFilterLogicAnd(timerData)">@LDesigner["AndLabel"]</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => SetFilterLogicOr(timerData)">@LDesigner["OrLabel"]</button>
+                                        </div>
+                                    </div>
+                                }
+                                @if (timerData.ClientFilter?.AttributeConditions != null)
+                                {
+                                    @for (var condIdx = 0; condIdx < timerData.ClientFilter.AttributeConditions.Count; condIdx++)
+                                    {
+                                        var cond = timerData.ClientFilter.AttributeConditions[condIdx];
+                                        var idx = condIdx;
+                                        var borderClass = cond.Operator switch
+                                        {
+                                            "equals" or "notequals" => "border-primary",
+                                            "contains" or "startswith" or "endswith" => "border-success",
+                                            "greaterThan" or "lessThan" or "greaterOrEqual" or "lessOrEqual" => "border-warning",
+                                            "regex" or "inList" => "border-dark",
+                                            _ => "border-secondary"
+                                        };
+                                        <div class="card p-3 mb-3 @borderClass shadow-sm">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <span class="small fw-bold">@LDesigner["LabelCondition"] @(idx + 1)</span>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveFilterCondition(timerData, cond)">
+                                                    <span class="oi oi-trash"></span>
+                                                </button>
+                                            </div>
+                                            <div class="mb-2 designer-var-row">
+                                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                                    <span>@LDesigner["LabelKey"]</span>
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(cond, nameof(cond.AttributeKey), v))"><span class="oi oi-code"></span> {}</button>
+                                                </label>
+                                                <input type="text" class="form-control variable-input" placeholder="name, email, ..."
+                                                       value="@ToDisplayText(cond.AttributeKey)"
+                                                       @oninput="e => { UpdateFieldAndCheckAtMention(e, cond, nameof(cond.AttributeKey)); OnWorkflowChanged(); }"/>
+                                            </div>
+                                            <div class="text-center my-1"><span class="badge @GetFilterOperatorBadgeClass(cond.Operator)">@GetFilterOperatorBadgeText(cond.Operator)</span></div>
+                                            <div class="mb-2 position-relative">
+                                                <div class="designer-condition-type-dropdown @(_filterOperatorDropdownOpenIdx == idx ? "open" : "")">
+                                                    <button type="button"
+                                                            class="designer-condition-type-trigger"
+                                                            @onclick="() => _filterOperatorDropdownOpenIdx = _filterOperatorDropdownOpenIdx == idx ? -1 : idx"
+                                                            aria-haspopup="listbox"
+                                                            aria-expanded="@(_filterOperatorDropdownOpenIdx == idx)">
+                                                        <span class="designer-condition-type-trigger-text">@GetFilterOperatorLabel(cond.Operator)</span>
+                                                        <span class="oi oi-chevron-bottom designer-condition-type-chevron"></span>
+                                                    </button>
+                                                    @if (_filterOperatorDropdownOpenIdx == idx)
+                                                    {
+                                                        <div class="designer-condition-type-backdrop" @onclick="() => _filterOperatorDropdownOpenIdx = -1"></div>
+                                                        <ul class="designer-condition-type-menu" role="listbox">
+                                                            @foreach (var opt in FilterOperatorOptions)
+                                                            {
+                                                                var optValue = opt.Value;
+                                                                var optLabel = opt.Label;
+                                                                var isSelected = cond.Operator == optValue;
+                                                                <li role="option" aria-selected="@isSelected">
+                                                                    <button type="button"
+                                                                            class="designer-condition-type-item @(isSelected ? "selected" : "")"
+                                                                            @onclick="() => { cond.Operator = optValue; _filterOperatorDropdownOpenIdx = -1; OnWorkflowChanged(); }">
+                                                                        @optLabel
+                                                                    </button>
+                                                                </li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                            </div>
+                                            @if (cond.Operator != "isEmpty" && cond.Operator != "isNotEmpty")
+                                            {
+                                                <div class="designer-var-row mb-2">
+                                                    <label class="small text-muted d-flex justify-content-between align-items-center">
+                                                        <span>@(cond.Operator == "inList" ? LDesigner["LabelValuesCommaSeparated"] : cond.Operator == "regex" ? LDesigner["LabelRegexPattern"] : LDesigner["LabelValue"])</span>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(cond, nameof(cond.Value), v))"><span class="oi oi-code"></span> {}</button>
+                                                    </label>
+                                                    <input type="text" class="form-control @(cond.Operator == "regex" ? "font-monospace" : "") variable-input"
+                                                           placeholder="@(cond.Operator == "inList" ? "a, b, c" : cond.Operator == "regex" ? "\\d+" : LDesigner["LabelValue"].Value)"
+                                                           value="@ToDisplayText(cond.Value)"
+                                                           @oninput="e => { UpdateFieldAndCheckAtMention(e, cond, nameof(cond.Value)); OnWorkflowChanged(); }"/>
+                                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input type="checkbox" class="form-check-input" id="fic-@idx"
+                                                           checked="@(cond.IgnoreCase ?? false)"
+                                                           @onchange="e => ToggleFilterIgnoreCase(cond, e)"/>
+                                                    <label class="form-check-label small text-muted" for="fic-@idx">@LDesigner["IgnoreCase"]</label>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                <button type="button" class="designer-ask-add" @onclick="() => AddFilterCondition(timerData)">
+                                    <span class="oi oi-plus"></span> @LDesigner["AddCondition"]
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+                else if (SelectedModel is WorkflowLinkModel link)
+                {
+                    <div class="section-title mb-3 fw-bold">@LDesigner["TransitionLogic"]</div>
+
+                    <div class="mb-3">
+                        <label class="form-label">@LDesigner["ConditionType"]</label>
+                        <div class="designer-condition-type-dropdown @(_conditionTypeDropdownOpen ? "open" : "")">
+                            <button type="button"
+                                    id="condition-type-trigger"
+                                    class="designer-condition-type-trigger"
+                                    @onclick="() => _conditionTypeDropdownOpen = !_conditionTypeDropdownOpen"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="@_conditionTypeDropdownOpen">
+                                <span class="designer-condition-type-trigger-text">@GetConditionTypeDisplayLabel(link)</span>
+                                <span class="oi oi-chevron-bottom designer-condition-type-chevron"></span>
+                            </button>
+                            @if (_conditionTypeDropdownOpen)
+                            {
+                                <div class="designer-condition-type-backdrop" @onclick="() => _conditionTypeDropdownOpen = false"></div>
+                                <ul id="condition-type-menu" class="designer-condition-type-menu designer-condition-type-menu--fixed" role="listbox">
+                                    @foreach (var opt in ConditionTypeOptions)
+                                    {
+                                        var value = opt.Value;
+                                        var label = opt.Label;
+                                        var isSelected = (value == "none" && link.Condition == null) ||
+                                                         (value == "and" && link.Condition?.And != null) ||
+                                                         (value == "or" && link.Condition?.Or != null) ||
+                                                         (value == "equals" && link.Condition?.Equals != null) ||
+                                                         (value == "notEquals" && link.Condition?.NotEquals != null) ||
+                                                         (value == "contains" && link.Condition?.Contains != null) ||
+                                                         (value == "startsWith" && link.Condition?.StartsWith != null) ||
+                                                         (value == "endsWith" && link.Condition?.EndsWith != null) ||
+                                                         (value == "greaterThan" && link.Condition?.GreaterThan != null) ||
+                                                         (value == "lessThan" && link.Condition?.LessThan != null) ||
+                                                         (value == "greaterOrEqual" && link.Condition?.GreaterOrEqual != null) ||
+                                                         (value == "lessOrEqual" && link.Condition?.LessOrEqual != null) ||
+                                                         (value == "inList" && link.Condition?.InList != null) ||
+                                                         (value == "regex" && link.Condition?.Regex != null) ||
+                                                         (value == "isEmpty" && link.Condition?.IsEmpty != null) ||
+                                                         (value == "isNotEmpty" && link.Condition?.IsNotEmpty != null);
+                                        <li role="option" aria-selected="@isSelected">
+                                            <button type="button"
+                                                    class="designer-condition-type-item @(isSelected ? "selected" : "")"
+                                                    @onclick="() => { OnConditionTypeChanged(link, value); }">
+                                                @label
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </div>
+
+                    @if (link.Condition?.IsComposite == true)
+                    {
+                        <div class="mb-3">
+                            <p class="small text-muted mb-2">@(link.Condition.And != null ? LDesigner["AllConditionsMustMatch"] : LDesigner["AnyConditionMustMatch"])</p>
+                            @for (var idx = 0; idx < link.Condition.SubConditions!.Count; idx++)
+                            {
+                                var index = idx;
+                                var sub = link.Condition.SubConditions[idx];
+                                var subBin = GetSubBinary(sub);
+                                var subUn = GetSubUnary(sub);
+                                <div class="card p-3 mb-2 border-secondary">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="small fw-bold">@LDesigner["LabelCondition"] @(idx + 1)</span>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveSubCondition(link, index)"><span class="oi oi-trash"></span></button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="small text-muted">@LDesigner["LabelType"]</label>
+                                        <select class="form-select form-select-sm" value="@GetSubConditionType(sub)" @onchange="e => OnConditionTypeChangedForSub(link, sub, e.Value?.ToString())">
+                                            @foreach (var opt in ConditionTypeOptions.Where(o => o.Value != "none" && o.Value != "and" && o.Value != "or"))
+                                            {
+                                                <option value="@opt.Value" selected="@(GetSubConditionType(sub) == opt.Value)">@opt.Label</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    @if (subBin != null)
+                                    {
+                                        <div class="mb-2">
+                                            <label class="small text-muted">@LDesigner["VariableLabel"]</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(subBin.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, subBin, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="Left"/>
+                                                <button type="button" class="btn btn-outline-secondary" @onclick="() => ShowVariablePicker(v => InsertVariable(subBin, nameof(BinaryConditionBase.Left), v))">{}</button>
+                                            </div>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="small text-muted">@LDesigner["LabelValue"]</label>
+                                            @if (IsMessageKindLeftOperand(subBin.Left))
+                                            {
+                                                <select class="form-select form-select-sm variable-input" value="@subBin.Right" @onchange="@(e => { subBin.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                                    @foreach (var opt in IncomingMessageKindSelectOptions)
+                                                    {
+                                                        <option value="@opt.Value">@opt.Label</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <div class="input-group input-group-sm">
+                                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(subBin.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, subBin, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }" placeholder="Right"/>
+                                                    <button type="button" class="btn btn-outline-secondary" @onclick="() => ShowVariablePicker(v => InsertVariable(subBin, nameof(BinaryConditionBase.Right), v))">{}</button>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="form-check form-check-sm">
+                                            <input type="checkbox" class="form-check-input" id="sub-ic-@idx" checked="@(subBin.IgnoreCase == true)" @onchange="e => { subBin.IgnoreCase = (bool)e.Value!; OnWorkflowChanged(); }"/>
+                                            <label class="form-check-label small text-muted" for="sub-ic-@idx">@LDesigner["IgnoreCase"]</label>
+                                        </div>
+                                    }
+                                    else if (subUn != null)
+                                    {
+                                        <div class="mb-2">
+                                            <label class="small text-muted">@LDesigner["VariableLabel"]</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(subUn.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, subUn, nameof(UnaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="Left"/>
+                                                <button type="button" class="btn btn-outline-secondary" @onclick="() => ShowVariablePicker(v => InsertVariable(subUn, nameof(UnaryConditionBase.Left), v))">{}</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            <button type="button" class="designer-ask-add" @onclick="() => AddSubCondition(link)"><span class="oi oi-plus"></span> @LDesigner["AddCondition"]</button>
+                        </div>
+                    }
+                    else if (link.Condition?.Equals != null)
+                    {
+                        <div class="card p-3 border-primary mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.Equals!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.Equals.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Equals!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge designer-cond-badge designer-cond-badge--equals">@LDesigner["BadgeEquals"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["LabelValue"]</span>
+                                    @if (!IsMessageKindLeftOperand(link.Condition.Equals.Left))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.Equals!, nameof(EqualsCondition.Right), v))"><span class="oi oi-code"></span> {}</button>
+                                    }
+                                </label>
+                                @if (IsMessageKindLeftOperand(link.Condition.Equals.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.Equals.Right" @onchange="@(e => { link.Condition!.Equals!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.Equals.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Equals!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="eq-ignoreCase" checked="@(link.Condition.Equals.IgnoreCase == true)" @onchange="@(e => link.Condition!.Equals!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="eq-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.NotEquals != null)
+                    {
+                        <div class="card p-3 border-secondary mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.NotEquals!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.NotEquals.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.NotEquals!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-secondary">@LDesigner["BadgeNotEquals"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["LabelValue"]</span>
+                                    @if (!IsMessageKindLeftOperand(link.Condition.NotEquals.Left))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.NotEquals!, nameof(NotEqualsCondition.Right), v))"><span class="oi oi-code"></span> {}</button>
+                                    }
+                                </label>
+                                @if (IsMessageKindLeftOperand(link.Condition.NotEquals.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.NotEquals.Right" @onchange="@(e => { link.Condition!.NotEquals!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.NotEquals.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.NotEquals!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="ne-ignoreCase" checked="@(link.Condition.NotEquals.IgnoreCase == true)" @onchange="@(e => link.Condition!.NotEquals!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="ne-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.Contains != null)
+                    {
+                        <div class="card p-3 border-success mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.Contains!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.Contains.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Contains!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-success">@LDesigner["BadgeContains"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["LabelSubstring"]</span>
+                                    @if (!IsMessageKindLeftOperand(link.Condition.Contains.Left))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.Contains!, nameof(ContainsCondition.Right), v))"><span class="oi oi-code"></span> {}</button>
+                                    }
+                                </label>
+                                @if (IsMessageKindLeftOperand(link.Condition.Contains.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.Contains.Right" @onchange="@(e => { link.Condition!.Contains!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.Contains.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Contains!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="ct-ignoreCase" checked="@(link.Condition.Contains.IgnoreCase ?? true)" @onchange="@(e => link.Condition!.Contains!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="ct-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.StartsWith != null)
+                    {
+                        <div class="card p-3 border-info mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.StartsWith!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.StartsWith.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.StartsWith!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-info">@LDesigner["BadgeStartsWith"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelPrefix"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.StartsWith.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.StartsWith.Right" @onchange="@(e => { link.Condition!.StartsWith!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.StartsWith.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.StartsWith!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="sw-ignoreCase" checked="@(link.Condition.StartsWith.IgnoreCase ?? true)" @onchange="@(e => link.Condition!.StartsWith!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="sw-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.EndsWith != null)
+                    {
+                        <div class="card p-3 border-info mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.EndsWith!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.EndsWith.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.EndsWith!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-info">@LDesigner["BadgeEndsWith"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelSuffix"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.EndsWith.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.EndsWith.Right" @onchange="@(e => { link.Condition!.EndsWith!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.EndsWith.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.EndsWith!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="ew-ignoreCase" checked="@(link.Condition.EndsWith.IgnoreCase ?? true)" @onchange="@(e => link.Condition!.EndsWith!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="ew-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.GreaterThan != null)
+                    {
+                        <div class="card p-3 border-warning mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.GreaterThan!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.GreaterThan.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.GreaterThan!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-warning text-dark">@LDesigner["BadgeGreaterThan"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelValue"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.GreaterThan.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.GreaterThan.Right" @onchange="@(e => { link.Condition!.GreaterThan!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.GreaterThan.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.GreaterThan!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="gt-ignoreCase" checked="@(link.Condition.GreaterThan.IgnoreCase == true)" @onchange="@(e => link.Condition!.GreaterThan!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="gt-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.LessThan != null)
+                    {
+                        <div class="card p-3 border-warning mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.LessThan!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.LessThan.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.LessThan!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-warning text-dark">@LDesigner["BadgeLessThan"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelValue"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.LessThan.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.LessThan.Right" @onchange="@(e => { link.Condition!.LessThan!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.LessThan.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.LessThan!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="lt-ignoreCase" checked="@(link.Condition.LessThan.IgnoreCase == true)" @onchange="@(e => link.Condition!.LessThan!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="lt-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.GreaterOrEqual != null)
+                    {
+                        <div class="card p-3 border-warning mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.GreaterOrEqual!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.GreaterOrEqual.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.GreaterOrEqual!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-warning text-dark">≥</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelValue"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.GreaterOrEqual.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.GreaterOrEqual.Right" @onchange="@(e => { link.Condition!.GreaterOrEqual!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.GreaterOrEqual.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.GreaterOrEqual!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="ge-ignoreCase" checked="@(link.Condition.GreaterOrEqual.IgnoreCase == true)" @onchange="@(e => link.Condition!.GreaterOrEqual!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="ge-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.LessOrEqual != null)
+                    {
+                        <div class="card p-3 border-warning mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.LessOrEqual!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.LessOrEqual.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.LessOrEqual!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-warning text-dark">≤</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelValue"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.LessOrEqual.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.LessOrEqual.Right" @onchange="@(e => { link.Condition!.LessOrEqual!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.LessOrEqual.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.LessOrEqual!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="le-ignoreCase" checked="@(link.Condition.LessOrEqual.IgnoreCase == true)" @onchange="@(e => link.Condition!.LessOrEqual!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="le-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.InList != null)
+                    {
+                        <div class="card p-3 border-dark mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.InList!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.InList.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.InList!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-dark">@LDesigner["BadgeInList"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelValuesCommaSeparated"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.InList.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.InList.Right" @onchange="@(e => { link.Condition!.InList!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control variable-input" value="@ToDisplayText(link.Condition.InList.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.InList!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }" placeholder="a, b, c"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="il-ignoreCase" checked="@(link.Condition.InList.IgnoreCase ?? true)" @onchange="@(e => link.Condition!.InList!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="il-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.Regex != null)
+                    {
+                        <div class="card p-3 border-dark mb-3 shadow-sm">
+                            <div class="mb-2 designer-var-row">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.Regex!, nameof(BinaryConditionBase.Left), v))"><span class="oi oi-code"></span> {}</button>
+                                </label>
+                                <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.Regex.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Regex!, nameof(BinaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                                <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-dark">@LDesigner["BadgeRegex"]</span></div>
+                            <div class="designer-var-row">
+                                <label class="small text-muted">@LDesigner["LabelRegexPattern"]</label>
+                                @if (IsMessageKindLeftOperand(link.Condition.Regex.Left))
+                                {
+                                    <select class="form-select form-select-sm variable-input" value="@link.Condition.Regex.Right" @onchange="@(e => { link.Condition!.Regex!.Right = e.Value?.ToString() ?? ""; OnWorkflowChanged(); })">
+                                        @foreach (var opt in IncomingMessageKindSelectOptions)
+                                        {
+                                            <option value="@opt.Value">@opt.Label</option>
+                                        }
+                                    </select>
+                                    <small class="form-text text-muted">@LDesigner["IncomingMsgTypeHint"]</small>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.Regex.Right)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.Regex!, nameof(BinaryConditionBase.Right)); OnWorkflowChanged(); }" placeholder="\d+"/>
+                                    <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                                }
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="rx-ignoreCase" checked="@(link.Condition.Regex.IgnoreCase == true)" @onchange="@(e => link.Condition!.Regex!.IgnoreCase = (bool)e.Value!)"/>
+                                <label class="form-check-label small text-muted" for="rx-ignoreCase">@LDesigner["IgnoreCase"]</label>
+                            </div>
+                        </div>
+                    }
+                    else if (link.Condition?.IsEmpty != null)
+                    {
+                        <div class="card p-3 border-secondary mb-3 shadow-sm">
+                            <div class="designer-var-row mb-2">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.IsEmpty!, nameof(UnaryConditionBase.Left), v))">
+                                        <span class="oi oi-code"></span> {}
+                                    </button>
+                            </label>
+                            <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.IsEmpty.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.IsEmpty!, nameof(UnaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                            <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-secondary">@LDesigner["BadgeIsEmpty"]</span></div>
+                        </div>
+                    }
+                    else if (link.Condition?.IsNotEmpty != null)
+                    {
+                        <div class="card p-3 border-secondary mb-3 shadow-sm">
+                            <div class="designer-var-row mb-2">
+                                <label class="small text-muted d-flex justify-content-between align-items-center">
+                                    <span>@LDesigner["VariableLabel"]</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary designer-var-picker-btn" title="@LDesigner["InsertVariableTooltip"]" @onclick="() => ShowVariablePicker(v => InsertVariable(link.Condition!.IsNotEmpty!, nameof(UnaryConditionBase.Left), v))">
+                                        <span class="oi oi-code"></span> {}
+                                    </button>
+                            </label>
+                            <input type="text" class="form-control font-monospace variable-input" value="@ToDisplayText(link.Condition.IsNotEmpty.Left)" @oninput="e => { UpdateFieldAndCheckAtMention(e, link.Condition!.IsNotEmpty!, nameof(UnaryConditionBase.Left)); OnWorkflowChanged(); }" placeholder="$variable_name"/>
+                            <small class="form-text text-muted">@((MarkupString)string.Format(LDesigner["EnterAtToSelectVar"].Value, "<kbd>@@</kbd>"))</small>
+                            </div>
+                            <div class="text-center my-1"><span class="badge bg-secondary">@LDesigner["BadgeIsNotEmpty"]</span></div>
+                        </div>
+                    }
+
+                    @if (link.Condition != null && !link.Condition.IsComposite)
+                    {
+                        <div class="mb-3">
+                            <span class="small text-muted">@LDesigner["JoinConditionsLabel"]:</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => ConvertToAnd(link)">@LDesigner["AndLabel"]</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => ConvertToOr(link)">@LDesigner["OrLabel"]</button>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">@LDesigner["LineLabel"]</label>
+                        <input type="text" class="form-control" @bind="link.Label" placeholder="@LDesigner["LineLabelPlaceholder"]"/>
+                    </div>
+                }
+
+                <hr/>
+                <div class="mt-3">
+                    <button class="btn btn-outline-danger w-100" @onclick="DeleteSelectedModel">
+                        <span class="oi oi-trash"></span> @LDesigner["DeleteBtn"]
+                    </button>
+                </div>
+            </div>
+        </div>
+        }
+
+    </main>
+</div>
+
+<div class="workflow-ai-dialog-host">
+    <WorkflowAiDialog @bind-IsOpen="IsAiModalOpen"
+                    GetCurrentSchema="GetCurrentSchema"
+                    GetDiagramNodeCount="GetDiagramNodeCountForAi"
+                    OnSchemaApplied="HandleAiSchemaApplied" />
+</div>
+
+<ClientChannelPickerDialog IsOpen="IsClientPickerOpen"
+                            OnClose="() => IsClientPickerOpen = false"
+                            OnChannelSelected="HandleChannelSelected" />
+
+<!-- Модальное окно «Атрибуты и параметры» (2 вкладки) -->
+@if (IsVariablesModalOpen)
+{
+    <div class="variables-modal-backdrop" @onclick="CloseVariablesModal"></div>
+    <div class="variables-modal">
+        <div class="variables-modal-header">
+            <h2 class="variables-modal-title">@LDesigner["ModalTitleAttributes"]</h2>
+            <button type="button" class="variables-modal-close" @onclick="CloseVariablesModal" aria-label="@LDesigner["CloseLabel"]">
+                <span class="oi oi-x"></span>
+            </button>
+        </div>
+        <div class="variables-modal-tabs">
+            <button type="button" class="variables-modal-tab @(VariablesModalTab == 0 ? "active" : "")" @onclick="() => VariablesModalTab = 0">
+                @LDesigner["TabAttributes"]
+            </button>
+            <button type="button" class="variables-modal-tab @(VariablesModalTab == 1 ? "active" : "")" @onclick="() => VariablesModalTab = 1">
+                @LDesigner["TabParameters"]
+            </button>
+        </div>
+        <div class="variables-modal-body">
+            @if (VariablesModalTab == 0)
+            {
+                <div class="variables-modal-list">
+                    @{
+                        var attrKeys = GetAttributeKeysForModal().ToList();
+                        var attrDisplay = CompanyAttributeDefinitions.ToDictionary(a => a.Key, a => a.DisplayName ?? a.Key, StringComparer.OrdinalIgnoreCase);
+                    }
+                    @if (!attrKeys.Any())
+                    {
+                        <p class="variables-modal-empty">@LDesigner["AttributesEmptyHint"]</p>
+                    }
+                    else
+                    {
+                        @foreach (var key in attrKeys)
+                        {
+                            <div class="variables-modal-item var-global">
+                                <code>@key</code>
+                                <span class="text-muted">@(attrDisplay.TryGetValue(key, out var dn) ? dn : GetAttributeDisplayName(key))</span>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="form-text text-muted mb-3">@LDesigner["ParametersHint1"]</p>
+                <p class="form-text text-muted mb-3">@((MarkupString)string.Format(LDesigner["ParametersHint2"].Value, "<code>{{parameter_name}}</code>", "<code>{{user_query}}</code>"))</p>
+                <div class="variables-modal-group mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="variables-modal-group-title">@LDesigner["HeaderInputParams"]</div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddWorkflowInputParameter">
+                            <span class="oi oi-plus"></span> @LDesigner["AddParamBtn"]
+                        </button>
+                    </div>
+                    @if (!CurrentWorkflowInputParameters.Any())
+                    {
+                        <p class="variables-modal-empty small">@LDesigner["EmptyInputParamsModal"]</p>
+                    }
+                    else
+                    {
+                        @foreach (var p in CurrentWorkflowInputParameters.ToList())
+                        {
+                            <div class="card card-body p-2 mb-2">
+                                <div class="row g-2">
+                                    <div class="col">
+                                        <input type="text" class="form-control form-control-sm" placeholder="@LDesigner["PlaceholderParamName"]" @bind="p.Name" @oninput="OnWorkflowChanged" />
+                                    </div>
+                                    <div class="col">
+                                        <input type="text" class="form-control form-control-sm" placeholder="@LDesigner["PlaceholderDefaultValue"]" @bind="p.DefaultValue" @oninput="OnWorkflowChanged" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveWorkflowInputParameter(p)"><span class="oi oi-trash"></span></button>
+                                    </div>
+                                </div>
+                                <input type="text" class="form-control form-control-sm mt-1" placeholder="@LDesigner["PlaceholderDescription"]" @bind="p.Description" @oninput="OnWorkflowChanged" />
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="variables-modal-group">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="variables-modal-group-title">@LDesigner["HeaderOutputParams"]</div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddWorkflowOutputParameter">
+                            <span class="oi oi-plus"></span> @LDesigner["AddParamBtn"]
+                        </button>
+                    </div>
+                    @if (!CurrentWorkflowOutputParameters.Any())
+                    {
+                        <p class="variables-modal-empty small">@LDesigner["EmptyOutputParamsModal"]</p>
+                    }
+                    else
+                    {
+                        @foreach (var p in CurrentWorkflowOutputParameters.ToList())
+                        {
+                            <div class="card card-body p-2 mb-2">
+                                <div class="d-flex gap-2 align-items-center">
+                                    <input type="text" class="form-control form-control-sm" placeholder="@LDesigner["PlaceholderParamNameOutput"]" @bind="p.Name" @oninput="OnWorkflowChanged" />
+                                    <input type="text" class="form-control form-control-sm" placeholder="@LDesigner["PlaceholderDescription"]" @bind="p.Description" @oninput="OnWorkflowChanged" />
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveWorkflowOutputParameter(p)"><span class="oi oi-trash"></span></button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Модальное окно выбора переменной (референс code1.html) -->
+@if (IsVariablePickerOpen)
+{
+    <div class="variable-picker-backdrop" @onclick="CloseVariablePicker"></div>
+    <div class="variable-picker-modal" role="dialog">
+        <div class="variable-picker-header">
+            <h2 class="variable-picker-title">@LDesigner["PickerTitle"]</h2>
+            <button type="button" class="variable-picker-close" @onclick="CloseVariablePicker" aria-label="@LDesigner["CloseLabel"]">
+                <span class="oi oi-x"></span>
+            </button>
+        </div>
+        
+        @if (VariablePickerSelectedNode == null)
+        {
+            <div class="variable-picker-search-wrap">
+                <span class="variable-picker-search-icon oi oi-magnifying-glass"></span>
+                <input type="text"
+                       class="variable-picker-search"
+                       placeholder="@LDesigner["PickerSearchPlaceholder"]"
+                       @bind="VariablePickerSearch"
+                       @bind:event="oninput" />
+            </div>
+            <div class="variable-picker-list">
+                <div class="variable-picker-category">
+                    <div class="variable-picker-category-title">@LDesigner["PickerBlocksCategory"]</div>
+                    <div class="variable-picker-items">
+                        @foreach (var node in GetFilteredNodesForVariablePicker())
+                        {
+                            <button type="button"
+                                    class="variable-picker-item variable-picker-item--custom"
+                                    @onclick="() => SelectNodeForVariablePicker(node)">
+                                <span class="variable-picker-item-icon">
+                                    <span class="oi @GetNodeIcon(node)"></span>
+                                </span>
+                                <div class="variable-picker-item-body">
+                                    <span class="variable-picker-item-name">@node.Title</span>
+                                    <span class="variable-picker-item-code">@node.NodeType</span>
+                                </div>
+                                <span class="variable-picker-item-add oi oi-chevron-right"></span>
+                            </button>
+                        }
+                        @if (!GetFilteredNodesForVariablePicker().Any())
+                        {
+                            <div class="variable-picker-empty">
+                                <p>@LDesigner["PickerNoBlocks"]</p>
+                                <small>@LDesigner["PickerNoBlocksHint"]</small>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @foreach (var group in GetGroupedStaticVariablesForPicker())
+                {
+                    <div class="variable-picker-category">
+                        <div class="variable-picker-category-title">@group.Key</div>
+                        <div class="variable-picker-items">
+                            @foreach (var variable in group.Value)
+                            {
+                                <button type="button"
+                                        class="variable-picker-item variable-picker-item--@GetVariableTypeCss(variable.Type)"
+                                        @onclick="() => SelectVariableFromPicker(variable.Name)">
+                                    <span class="variable-picker-item-icon">
+                                        <span class="oi @GetVariableIcon(variable.Type)"></span>
+                                    </span>
+                                    <div class="variable-picker-item-body">
+                                        <span class="variable-picker-item-name">@GetVariableDisplayName(variable)</span>
+                                        <span class="variable-picker-item-code">@(variable.Name.StartsWith("$global.", StringComparison.OrdinalIgnoreCase) ? variable.Name["$global.".Length..] : variable.Name)</span>
+                                    </div>
+                                    <span class="variable-picker-item-add oi oi-plus"></span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="variable-picker-search-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary me-2" @onclick="BackToVariablePickerNodes" title="@LDesigner["BackLabel"]">
+                    <span class="oi oi-chevron-left"></span>
+                </button>
+                <span class="variable-picker-search-icon oi oi-magnifying-glass"></span>
+                <input type="text"
+                       class="variable-picker-search"
+                       placeholder="@LDesigner["PickerSearchBlockVars"]"
+                       @bind="VariablePickerSearch"
+                       @bind:event="oninput" />
+            </div>
+            <div class="variable-picker-list">
+                @{
+                    var vars = GetVariablesForSelectedNode();
+                }
+                @if (!vars.Any())
+                {
+                    <div class="variable-picker-empty">
+                        <p>@LDesigner["PickerNoVars"]</p>
+                        <small>@LDesigner["PickerNoVarsHint"]</small>
+                    </div>
+                }
+                else
+                {
+                    <div class="variable-picker-category">
+                        <div class="variable-picker-category-title">@VariablePickerSelectedNode.Title</div>
+                        <div class="variable-picker-items">
+                            @foreach (var v in vars)
+                            {
+                                <button type="button"
+                                        class="variable-picker-item variable-picker-item--custom"
+                                        @onclick="() => SelectVariableFromPicker(v.Key)">
+                                    <span class="variable-picker-item-icon">
+                                        <span class="oi oi-code"></span>
+                                    </span>
+                                    <div class="variable-picker-item-body">
+                                        <span class="variable-picker-item-name">@v.Display</span>
+                                        <span class="variable-picker-item-code">@GetVariableKeyShortDisplay(v.Key)</span>
+                                    </div>
+                                    <span class="variable-picker-item-add oi oi-plus"></span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="variable-picker-footer">
+            <p class="variable-picker-footer-tip">
+                <span class="oi oi-info"></span>
+                @LDesigner["PickerFooterTip"]
+            </p>
+        </div>
+    </div>
+}
+
+<!-- Модальное окно выбора файла из хранилища -->
+@if (IsStoragePickerOpen)
+{
+    var (storagePageItems, storageTotalFiltered) = GetStoragePickerPage();
+    <div class="variable-picker-backdrop" @onclick="CloseStoragePicker"></div>
+    <div class="variable-picker-modal storage-picker-modal" role="dialog" aria-modal="true" aria-labelledby="storage-picker-title">
+        <div class="variable-picker-header storage-picker-header">
+            <div class="storage-picker-header-text">
+                <h2 id="storage-picker-title" class="variable-picker-title">@LDesigner["StoragePickerTitle"]</h2>
+                <p class="storage-picker-subtitle">@LDesigner["StoragePickerSubtitle"]</p>
+            </div>
+            <button type="button" class="variable-picker-close" @onclick="CloseStoragePicker" aria-label="@LDesigner["CloseLabel"]">
+                <span class="oi oi-x"></span>
+            </button>
+        </div>
+        @if (!StoragePickerLoading && StoragePickerAllFiles.Any())
+        {
+            <div class="storage-picker-toolbar">
+                <label class="storage-picker-search-field">
+                    <span class="storage-picker-search-icon oi oi-magnifying-glass" aria-hidden="true"></span>
+                    <input type="search"
+                           class="storage-picker-search-input"
+                           placeholder="@LDesigner["StorageSearchPlaceholder"]"
+                           autocomplete="off"
+                           @bind="StoragePickerSearch"
+                           @bind:event="oninput"
+                           @bind:after="OnStoragePickerSearchInput" />
+                </label>
+                <button type="button" class="storage-picker-btn storage-picker-btn--accent" @onclick="OnStoragePickerSearchSubmit">@LDesigner["StorageFindBtn"]</button>
+            </div>
+        }
+        <div class="variable-picker-list storage-picker-list">
+            @if (StoragePickerLoading)
+            {
+                <div class="variable-picker-empty storage-picker-loading">
+                    <div class="storage-picker-spinner" aria-hidden="true"></div>
+                    <p>@LDesigner["StorageLoading"]</p>
+                </div>
+            }
+            else if (!StoragePickerAllFiles.Any())
+            {
+                <div class="variable-picker-empty storage-picker-empty-msg">
+                    <div class="storage-picker-empty-icon" aria-hidden="true">
+                        <span class="oi oi-folder"></span>
+                    </div>
+                    <p>@LDesigner["StorageNoFiles"]</p>
+                    <small>@LDesigner["StorageNoFilesHint"]</small>
+                </div>
+            }
+            else if (storageTotalFiltered == 0)
+            {
+                <div class="variable-picker-empty storage-picker-empty-msg">
+                    <div class="storage-picker-empty-icon storage-picker-empty-icon--muted" aria-hidden="true">
+                        <span class="oi oi-magnifying-glass"></span>
+                    </div>
+                    <p>@LDesigner["StorageNotFound"]</p>
+                    <small>@LDesigner["StorageNotFoundHint"]</small>
+                </div>
+            }
+            else
+            {
+                <div class="storage-picker-scroll">
+                    <div class="storage-picker-grid" role="list">
+                        <div class="storage-picker-grid-head" role="presentation">
+                            <span class="storage-picker-col storage-picker-col--name">@LDesigner["StorageColName"]</span>
+                            <span class="storage-picker-col storage-picker-col--id">ID</span>
+                            <span class="storage-picker-col storage-picker-col--date">@LDesigner["StorageColDate"]</span>
+                            <span class="storage-picker-col storage-picker-col--action" aria-hidden="true"></span>
+                        </div>
+                        @foreach (var f in storagePageItems)
+                        {
+                            <div class="storage-picker-row" role="listitem" @onclick="() => SelectStorageFile(f)">
+                                <span class="storage-picker-col storage-picker-col--name" title="@(f.Name ?? "")">@(f.Name ?? "—")</span>
+                                <code class="storage-picker-col storage-picker-col--id storage-picker-id" title="@f.Id">@f.Id</code>
+                                <span class="storage-picker-col storage-picker-col--date">@(f.CreatedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—")</span>
+                                <div class="storage-picker-col storage-picker-col--action" @onclick:stopPropagation="true">
+                                    <button type="button" class="storage-picker-btn storage-picker-btn--primary" @onclick="() => SelectStorageFile(f)">
+                                        @LDesigner["StorageSelectBtn"]
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        @if (!StoragePickerLoading && StoragePickerAllFiles.Any() && storageTotalFiltered > 0)
+        {
+            <div class="storage-picker-pagination">
+                <p class="storage-picker-count">@((MarkupString)string.Format(LDesigner["StorageShowing"].Value, $"<strong>{storagePageItems.Count}</strong>", $"<strong>{storageTotalFiltered}</strong>"))</p>
+                <div class="storage-picker-pagination-btns">
+                    <button type="button" class="storage-picker-nav-btn" disabled="@(!StoragePickerHasPrev)" @onclick="StoragePickerPrevPage" title="@LDesigner["StoragePrevPage"]">
+                        <span class="oi oi-chevron-left"></span>
+                    </button>
+                    <button type="button" class="storage-picker-nav-btn" disabled="@(!StoragePickerHasNext)" @onclick="StoragePickerNextPage" title="@LDesigner["StorageNextPage"]">
+                        <span class="oi oi-chevron-right"></span>
+                    </button>
+                </div>
+            </div>
+        }
+        <div class="storage-picker-footer">
+            <button type="button" class="storage-picker-btn storage-picker-btn--ghost" @onclick="CloseStoragePicker">@LDesigner["CloseLabel"]</button>
+        </div>
+    </div>
+}
+
+<!-- Модальное окно выбора процесса (поиск + пагинация) -->
+@if (IsProcessPickerOpen)
+{
+    <div class="variable-picker-backdrop" @onclick="CloseProcessPicker"></div>
+    <div class="variable-picker-modal" role="dialog" style="max-width: 420px;">
+        <div class="variable-picker-header">
+            <h2 class="variable-picker-title">@LDesigner["ProcessPickerTitle"]</h2>
+            <button type="button" class="variable-picker-close" @onclick="CloseProcessPicker" aria-label="@LDesigner["CloseLabel"]">
+                <span class="oi oi-x"></span>
+            </button>
+        </div>
+        <div class="variable-picker-search-wrap">
+            <span class="variable-picker-search-icon oi oi-magnifying-glass"></span>
+            <input type="text"
+                   class="variable-picker-search"
+                   placeholder="@LDesigner["ProcessSearchPlaceholder"]"
+                   @bind="ProcessPickerSearch"
+                   @bind:event="oninput" />
+            <button type="button" class="btn btn-sm btn-outline-primary ms-2" @onclick="OnProcessPickerSearchSubmit">@LDesigner["ProcessSearchBtn"]</button>
+        </div>
+        <div class="variable-picker-list" style="min-height: 200px;">
+            @if (ProcessPickerLoading)
+            {
+                <div class="variable-picker-empty">
+                    <p>@LDesigner["ProcessLoading"]</p>
+                </div>
+            }
+            else if (!ProcessPickerItems.Any())
+            {
+                <div class="variable-picker-empty">
+                    <p>@LDesigner["ProcessNoItems"]</p>
+                    <small>@LDesigner["ProcessNoItemsHint"]</small>
+                </div>
+            }
+            else
+            {
+                @foreach (var w in ProcessPickerItems)
+                {
+                    <button type="button"
+                            class="variable-picker-item variable-picker-item--custom"
+                            @onclick="() => SelectProcessFromPicker(w)">
+                        <span class="variable-picker-item-icon"><span class="oi oi-layers"></span></span>
+                        <div class="variable-picker-item-body">
+                            <span class="variable-picker-item-name">@GetWorkflowDisplayName(w)</span>
+                            <span class="variable-picker-item-code">v@w.Version</span>
+                        </div>
+                        <span class="variable-picker-item-add oi oi-plus"></span>
+                    </button>
+                }
+            }
+        </div>
+        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(!ProcessPickerHasPrev)" @onclick="ProcessPickerPrevPage">
+                <span class="oi oi-chevron-left"></span> @LDesigner["ProcessPrevBtn"]
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(!ProcessPickerHasNext)" @onclick="ProcessPickerNextPage">
+                @LDesigner["ProcessNextBtn"] <span class="oi oi-chevron-right"></span>
+            </button>
+        </div>
+    </div>
+}

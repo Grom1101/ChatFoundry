@@ -1,0 +1,44 @@
+@page "/settings/api"
+@layout SettingsLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IStringLocalizer<Api> LApi
+
+<PageTitle>@LApi["PageTitle"] — ChatFoundry</PageTitle>
+
+<div class="coming-soon">
+    <div class="coming-soon-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/>
+            <polyline points="8 6 2 12 8 18"/>
+        </svg>
+    </div>
+    <h1 class="coming-soon-title">@LApi["Title"]</h1>
+    <p class="coming-soon-desc">
+        @LApi["Desc"]
+    </p>
+
+    <div class="api-features-grid">
+        <div class="api-feature-card">
+            <div class="api-feature-icon" style="background: #eef2ff; color: #6366f1;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </div>
+            <div class="api-feature-title">@LApi["FeatureRestTitle"]</div>
+            <div class="api-feature-desc">@LApi["FeatureRestDesc"]</div>
+        </div>
+        <div class="api-feature-card">
+            <div class="api-feature-icon" style="background: #faf5ff; color: #8b5cf6;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            </div>
+            <div class="api-feature-title">@LApi["FeatureGraphqlTitle"]</div>
+            <div class="api-feature-desc">@LApi["FeatureGraphqlDesc"]</div>
+        </div>
+        <div class="api-feature-card">
+            <div class="api-feature-icon" style="background: #ecfdf5; color: #10b981;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div class="api-feature-title">@LApi["FeatureWebhooksTitle"]</div>
+            <div class="api-feature-desc">@LApi["FeatureWebhooksDesc"]</div>
+        </div>
+    </div>
+</div>

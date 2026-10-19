@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option csharp_namespace = "Billing.Grpc";
+
+package billing;
+
+service BillingQuotaService {
+  rpc CheckQuota (CheckQuotaRequest) returns (CheckQuotaResponse);
+  rpc GetCompanyPlan (GetCompanyPlanRequest) returns (GetCompanyPlanResponse);
+  rpc IncrementUsage (IncrementUsageRequest) returns (IncrementUsageResponse);
+}
+
+message CheckQuotaRequest {
+  string company_id = 1;
+  string quota_type = 2;
+  int32 reported_usage = 3;
+}
+
+message CheckQuotaResponse {
+  bool allowed = 1;
+  int64 used = 2;
+  int64 limit = 3;
+}
+
+message GetCompanyPlanRequest {
+  string company_id = 1;
+}
+
+message GetCompanyPlanResponse {
+  string plan_slug = 1;
+  string status = 2;
+  int32 max_clients = 3;
+  int32 max_bots = 4;
+  int32 max_team_members = 5;
+  int64 max_ai_tokens = 6;
+  bool has_analytics = 8;
+  bool has_api_access = 9;
+  string pending_plan_slug = 10;
+  string pending_change_at = 11;
+}
+
+message IncrementUsageRequest {
+  string company_id = 1;
+  string usage_type = 2;
+  int64 amount = 3;
+}
+
+message IncrementUsageResponse {
+  bool success = 1;
+}

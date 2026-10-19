@@ -1,0 +1,258 @@
+@page "/settings/invitations"
+@layout SettingsLayout
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize]
+
+@inject ICompanyApiClient CompanyApi
+@inject NavigationManager Navigation
+@inject IJSRuntime JsRuntime
+@inject IStringLocalizer<Invitations> LInvitations
+
+<PageTitle>@LInvitations["PageTitle"] — ChatFoundry</PageTitle>
+
+<div class="settings-page-header">
+    <div>
+        <h1 class="settings-page-title">@LInvitations["HeaderTitle"]</h1>
+        <p class="settings-page-subtitle">@LInvitations["HeaderSubtitle"]</p>
+    </div>
+    <button class="settings-btn-primary" @onclick="OpenCreateInviteModal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        @LInvitations["BtnCreateInvitation"]
+    </button>
+</div>
+
+@if (loadError != null)
+{
+    <div class="settings-alert settings-alert-danger">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <span>@loadError</span>
+    </div>
+}
+@if (isLoading)
+{
+    <div class="settings-spinner-wrap">
+        <div class="settings-spinner"></div>
+    </div>
+}
+else if (!invitations.Any())
+{
+    <div class="settings-empty-state">
+        <div class="settings-empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+        <div class="settings-empty-title">@LInvitations["NoInvitationsTitle"]</div>
+        <div class="settings-empty-desc">@LInvitations["NoInvitationsDesc"]</div>
+        <button class="settings-btn-primary" @onclick="OpenCreateInviteModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            @LInvitations["BtnCreateInvitation"]
+        </button>
+    </div>
+}
+else
+{
+    <div class="settings-card">
+        <table class="settings-table">
+            <thead>
+            <tr>
+                <th>@LInvitations["ThEmail"]</th>
+                <th>@LInvitations["ThRole"]</th>
+                <th>@LInvitations["ThExpires"]</th>
+                <th>@LInvitations["ThStatus"]</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var inv in invitations)
+            {
+                <tr>
+                    <td>
+                        <span class="inv-email">@(inv.Email ?? LInvitations["AnyEmail"].Value)</span>
+                    </td>
+                    <td>
+                        <span class="settings-badge @InvRoleBadge(inv.Role)">@InvRoleLabel(inv.Role)</span>
+                    </td>
+                    <td>
+                        <span class="inv-date">@inv.ExpiresAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</span>
+                    </td>
+                    <td>
+                        @if (inv.UsedAt.HasValue)
+                        {
+                            <span class="settings-badge settings-badge-success">@LInvitations["StatusUsed"]</span>
+                        }
+                        else
+                        {
+                            <span class="settings-badge settings-badge-primary">@LInvitations["StatusActive"]</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (showInviteModal)
+{
+    <div class="settings-modal-backdrop" @onclick="CloseInviteModal"></div>
+    <div class="settings-modal">
+        <div class="settings-modal-header">
+            <h3 class="settings-modal-title">@LInvitations["ModalTitle"]</h3>
+            <button class="settings-modal-close" @onclick="CloseInviteModal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-modal-body">
+            @if (createdInviteLink == null)
+            {
+                <div class="settings-field">
+                    <label class="settings-label">@LInvitations["LabelEmailOptional"]</label>
+                    <input type="email" class="settings-input" @bind="inviteEmail" placeholder="user@example.com" />
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">@LInvitations["LabelRole"]</label>
+                    <select class="settings-select" @bind="inviteRole">
+                        <option value="MEMBER">@LInvitations["OptionMember"]</option>
+                        <option value="ADMIN">@LInvitations["OptionAdmin"]</option>
+                        <option value="OWNER">@LInvitations["OptionOwner"]</option>
+                    </select>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">@LInvitations["LabelExpiresDays"]</label>
+                    <input type="number" class="settings-input" @bind="inviteExpiresDays" min="1" max="365" />
+                </div>
+            }
+            else
+            {
+                <div class="settings-alert settings-alert-success">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span>@LInvitations["SuccessAlert"]</span>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">@LInvitations["LabelRegisterLink"]</label>
+                    <div class="inv-link-row">
+                        <input type="text" class="settings-input" readonly value="@createdInviteLink" />
+                        <button class="settings-btn-secondary" @onclick="CopyInviteLink">@LInvitations["BtnCopy"]</button>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="settings-modal-footer">
+            @if (createdInviteLink == null)
+            {
+                <button class="settings-btn-secondary" @onclick="CloseInviteModal">@LInvitations["BtnCancel"]</button>
+                <button class="settings-btn-primary" @onclick="CreateInvitation" disabled="@isCreating">
+                    @if (isCreating) { <div class="settings-spinner" style="width:16px;height:16px;border-width:2px;"></div> }
+                    @LInvitations["BtnCreate"]
+                </button>
+            }
+            else
+            {
+                <button class="settings-btn-primary" @onclick="CloseInviteModal">@LInvitations["BtnDone"]</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private CompanyDto? company;
+    private List<InvitationDto> invitations = new();
+    private bool isLoading = true;
+    private string? loadError;
+
+    private bool showInviteModal;
+    private string? inviteEmail;
+    private string inviteRole = "MEMBER";
+    private int inviteExpiresDays = 7;
+    private bool isCreating;
+    private string? createdInviteLink;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAll();
+    }
+
+    private async Task LoadAll()
+    {
+        isLoading = true;
+        loadError = null;
+        try
+        {
+            company = await CompanyApi.GetCurrentCompanyAsync();
+            if (company != null)
+            {
+                invitations = await CompanyApi.GetInvitationsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenCreateInviteModal()
+    {
+        createdInviteLink = null;
+        inviteEmail = null;
+        inviteRole = "MEMBER";
+        inviteExpiresDays = 7;
+        showInviteModal = true;
+    }
+
+    private void CloseInviteModal()
+    {
+        showInviteModal = false;
+        createdInviteLink = null;
+    }
+
+    private async Task CreateInvitation()
+    {
+        if (company == null) return;
+        if (inviteExpiresDays < 1 || inviteExpiresDays > 365) return;
+
+        isCreating = true;
+        try
+        {
+            var baseUrl = new Uri(Navigation.Uri).GetLeftPart(UriPartial.Authority);
+            var result = await CompanyApi.CreateInvitationAsync(inviteEmail, inviteRole, inviteExpiresDays, baseUrl);
+            createdInviteLink = result.InviteLink;
+            invitations = await CompanyApi.GetInvitationsAsync();
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private async Task CopyInviteLink()
+    {
+        if (string.IsNullOrEmpty(createdInviteLink)) return;
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", createdInviteLink);
+        }
+        catch { }
+    }
+
+    private static string InvRoleBadge(string? role) => role?.ToUpperInvariant() switch
+    {
+        "OWNER" => "settings-badge-primary",
+        "ADMIN" => "settings-badge-warning",
+        _ => "settings-badge-neutral"
+    };
+
+    private string InvRoleLabel(string? role) => role?.ToUpperInvariant() switch
+    {
+        "OWNER" => LInvitations["RoleOwner"],
+        "ADMIN" => LInvitations["RoleAdmin"],
+        "MEMBER" => LInvitations["RoleMember"],
+        _ => role ?? "—"
+    };
+}

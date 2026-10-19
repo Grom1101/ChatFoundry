@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../../tests/Directory.Build.props" />
+  <ItemGroup>
+    <ProjectReference Include="../../src/WorkflowService/WorkflowService.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.1" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,57 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngrok
+  namespace: chatfoundry
+  labels:
+    app: ngrok
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ngrok
+  template:
+    metadata:
+      labels:
+        app: ngrok
+    spec:
+      containers:
+      - name: ngrok
+        image: ngrok/ngrok:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - "http"
+        - "gateway-service:8080"
+        - "--domain=probable-dogfish-known.ngrok-free.app"
+        env:
+        - name: NGROK_AUTHTOKEN
+          valueFrom:
+            secretKeyRef:
+              name: chatfoundry-secrets
+              key: NGROK_AUTHTOKEN
+        ports:
+        - name: web-ui
+          containerPort: 4040
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngrok
+  namespace: chatfoundry
+  labels:
+    app: ngrok
+spec:
+  type: LoadBalancer
+  ports:
+  - name: web-ui
+    port: 4040
+    targetPort: 4040
+  selector:
+    app: ngrok

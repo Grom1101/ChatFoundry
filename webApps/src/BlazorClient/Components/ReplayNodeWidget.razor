@@ -1,0 +1,78 @@
+@using Blazor.Diagrams.Components.Renderers
+@using Blazor.Diagrams.Core.Models
+@using BlazorClient.Models.Diagram
+@using BlazorClient.Pages.Settings
+
+<div class="bd-node replay-node @GetNodeColorClass() @GetHighlightClass()">
+    <div class="replay-node-header">@(Node.Title ?? Node.NodeType)</div>
+
+    @if (Stats != null || IsCurrentNode)
+    {
+        <div class="replay-node-badges">
+            @if (Stats != null)
+            {
+                <span class="replay-badge-pill" title="@($"{L["ReplayVisits"]}: {Stats.Visits}")">@Stats.Visits</span>
+                @if (Stats.Completed > 0)
+                {
+                    <span class="replay-badge-pill pill-ok" title="@($"{L["ReplaySuccess"]}: {Stats.Completed}")">@Stats.Completed</span>
+                }
+                @if (Stats.Failed > 0)
+                {
+                    <span class="replay-badge-pill pill-fail" title="@($"{L["ReplayErrors"]}: {Stats.Failed}")">@Stats.Failed</span>
+                }
+            }
+            @if (IsCurrentNode)
+            {
+                <span class="replay-badge-pill pill-current" title="@L["ReplayCurrentNode"]">●</span>
+            }
+        </div>
+    }
+
+    
+    <div class="replay-node-ports replay-node-ports-left">
+        @foreach (var port in Node.Ports.Where(p => p.Alignment == PortAlignment.Left))
+        {
+            <PortRenderer @key="port.Id" Port="port" />
+        }
+    </div>
+    <div class="replay-node-ports replay-node-ports-right">
+        @foreach (var port in Node.Ports.Where(p => p.Alignment == PortAlignment.Right))
+        {
+            <PortRenderer @key="port.Id" Port="port" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public WorkflowNodeModel Node { get; set; } = null!;
+
+    private NodeStats? Stats => ReplayDataProvider?.GetStats(Guid.Parse(Node.Id));
+    private bool IsCurrentNode => ReplayDataProvider?.IsCurrentNode(Guid.Parse(Node.Id)) ?? false;
+    private bool IsSelectedStep => ReplayDataProvider?.IsSelectedStep(Guid.Parse(Node.Id)) ?? false;
+
+    [CascadingParameter(Name = "ReplayDataProvider")]
+    public IReplayDataProvider? ReplayDataProvider { get; set; }
+
+    private string GetNodeColorClass() => Node.NodeType.ToLower() switch
+    {
+        "start" => "replay-node--green",
+        "end" => "replay-node--red",
+        "message" => "replay-node--blue",
+        "ask" => "replay-node--blue",
+        "condition" or "aifilter" => "replay-node--orange",
+        "setvariable" or "setattribute" => "replay-node--indigo",
+        "httprequest" => "replay-node--violet",
+        "aigenerate" => "replay-node--violet",
+        "media" => "replay-node--blue",
+        _ => "replay-node--default"
+    };
+
+    private string GetHighlightClass()
+    {
+        if (IsSelectedStep) return "replay-node--selected";
+        if (IsCurrentNode) return "replay-node--current";
+        if (Stats?.Failed > 0) return "replay-node--has-errors";
+        if (Stats != null) return "replay-node--visited";
+        return "replay-node--unvisited";
+    }
+}

@@ -1,0 +1,459 @@
+﻿services:
+  web-client:
+    container_name: web_client
+    image: ghcr\.io/grom1101/chatfoundry/web-client:latest
+    build:
+      context: ..
+      dockerfile: webApps/src/BlazorClient/Dockerfile
+    ports:
+      - "7555:80"
+    depends_on:
+      - gateway-service
+    networks:
+      - app_network
+
+  gateway-service:
+    container_name: gateway_service
+    image: ghcr\.io/grom1101/chatfoundry/gateway:latest
+    build:
+      context: ..
+      dockerfile: services/Gateway/src/Gateway/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;https://+:8443
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=YourPassword123!
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/gateway.pfx
+      - Cors__AllowedOrigins__0=https://chatfoundry.dpdns.org
+      - Cors__AllowedOrigins__1=https://localhost:7555
+      - Cors__AllowedOrigins__2=http://localhost:7555
+    env_file:
+      - .env
+    ports:
+      - "5000:8080"
+    volumes:
+      - ./certs:/https:ro
+    depends_on:
+      - redis
+    networks:
+      - app_network
+
+  workflow-service:
+    container_name: workflow_service
+    image: ghcr\.io/grom1101/chatfoundry/workflow-service:latest
+    build:
+      context: ..
+      dockerfile: services/WorkflowService/src/WorkflowService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - Services__BillingServiceGrpc=http://billing-service:8081
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_workflow;Username=foundry;Password=foundry
+    env_file:
+      - .env
+    ports:
+      - "5010:8080"
+      - "5011:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  identity-service:
+    container_name: identity_service
+    image: ghcr\.io/grom1101/chatfoundry/identity-service:latest
+    build:
+      context: ..
+      dockerfile: services/IdentityServer/src/IdentityServer/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_identity;Username=foundry;Password=foundry
+    env_file:
+      - .env
+    ports:
+      - "5020:8080"
+      - "5021:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  client-service:
+    container_name: client_service
+    image: ghcr\.io/grom1101/chatfoundry/client-service:latest
+    build:
+      context: ..
+      dockerfile: services/ClientService/src/ClientService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - Services__BillingServiceGrpc=http://billing-service:8081
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_client;Username=foundry;Password=foundry
+    ports:
+      - "5030:8080"
+      - "5031:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  company-service:
+    container_name: company_service
+    image: ghcr\.io/grom1101/chatfoundry/company-service:latest
+    build:
+      context: ..
+      dockerfile: services/CompanyService/src/CompanyService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - Services__BillingServiceGrpc=http://billing-service:8081
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_company;Username=foundry;Password=foundry
+    ports:
+      - "5050:8080"
+      - "5051:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  billing-service:
+    container_name: billing_service
+    image: ghcr\.io/grom1101/chatfoundry/billing-service:latest
+    build:
+      context: ..
+      dockerfile: services/BillingService/src/BillingService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_billing;Username=foundry;Password=foundry
+    env_file:
+      - .env
+    ports:
+      - "5060:8080"
+      - "5061:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - app_network
+
+  telegram-service:
+    container_name: telegram_service
+    image: ghcr\.io/grom1101/chatfoundry/telegram-service:latest
+    build:
+      context: ..
+      dockerfile: services/TelegramService/src/TelegramService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+    env_file:
+      - .env
+    ports:
+      - "5040:8080"
+    depends_on:
+      - redis
+    networks:
+      - app_network
+
+  sms-service:
+    container_name: sms_service
+    image: ghcr\.io/grom1101/chatfoundry/sms-service:latest
+    build:
+      context: ..
+      dockerfile: services/SmsService/src/SmsService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+    env_file:
+      - .env
+    ports:
+      - "5045:8080"
+    depends_on:
+      - redis
+    networks:
+      - app_network
+
+  file-service:
+    container_name: file_service
+    image: ghcr\.io/grom1101/chatfoundry/file-service:latest
+    build:
+      context: ..
+      dockerfile: services/FileService/src/FileService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_file;Username=foundry;Password=foundry
+    ports:
+      - "5070:8080"
+      - "5071:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  notification-service:
+    container_name: notification_service
+    image: ghcr\.io/grom1101/chatfoundry/notification-service:latest
+    build:
+      context: ..
+      dockerfile: services/NotificationService/src/NotificationService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_notification;Username=foundry;Password=foundry
+    env_file:
+      - .env
+    ports:
+      - "5080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  scheduler-service:
+    container_name: scheduler_service
+    image: ghcr\.io/grom1101/chatfoundry/scheduler-service:latest
+    build:
+      context: ..
+      dockerfile: services/SchedulerService/src/SchedulerService/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080;http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Http__Url=http://+:8080
+      - ASPNETCORE_Kestrel__Endpoints__Http__Protocols=Http1
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://+:8081
+      - ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http2
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=foundry_db_scheduler;Username=foundry;Password=foundry
+    ports:
+      - "5090:8080"
+      - "5091:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  postgres:
+    image: postgres:16
+    container_name: postgres_lite
+    restart: always
+    environment:
+      POSTGRES_DB: foundry_db
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: foundry
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_lite_pgdata:/var/lib/postgresql/data
+      - ./init-lite-db.sql:/docker-entrypoint-initdb.d/init-lite-db.sql
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foundry -d foundry_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: redis
+    container_name: redis
+    restart: always
+    ports:
+      - "6380:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    networks:
+      - app_network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - app_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - app_network
+
+#  kafka-ui:
+#    image: provectuslabs/kafka-ui:latest
+#    depends_on:
+#      - kafka
+#    ports:
+#      - "8080:8080"
+#    environment:
+#      KAFKA_CLUSTERS_0_NAME: local
+#      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+#    networks:
+#      - app_network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    ports:
+      - "4040:4040"
+    depends_on:
+      - gateway-service
+    env_file:
+      - .env
+    command: http "https://gateway-service:8443" --domain probable-dogfish-known.ngrok-free.app
+    networks:
+      - app_network
+
+  seq:
+    image: datalust/seq:latest
+    container_name: seq
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_ADMINPASSWORD=YourPassword123!
+    ports:
+      - "5341:80"
+    volumes:
+      - seq_data:/data
+    networks:
+      - app_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - app_network
+
+#  prometheus:
+#    image: prom/prometheus:latest
+#    container_name: prometheus
+#    restart: unless-stopped
+#    ports:
+#      - "9090:9090"
+#    volumes:
+#      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#      - prometheus_data:/prometheus
+#    networks:
+#      - app_network
+#
+#  grafana:
+#    image: grafana/grafana:latest
+#    container_name: grafana
+#    restart: unless-stopped
+#    environment:
+#      - GF_SECURITY_ADMIN_USER=admin
+#      - GF_SECURITY_ADMIN_PASSWORD=admin
+#    ports:
+#      - "3000:3000"
+#    volumes:
+#      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+#      - grafana_data:/var/lib/grafana
+#    depends_on:
+#      - prometheus
+#      - jaeger
+#    networks:
+#      - app_network
+
+  freellmapi-service:
+    container_name: freellmapi_service
+    image: ghcr\.io/grom1101/chatfoundry/freellmapi-service:latest
+    build:
+      context: ../services/FreeLlmApiService
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - ENCRYPTION_KEY=${FREELLM_ENCRYPTION_KEY}
+    ports:
+      - "3001:3001"
+    volumes:
+      - freellmapi_data:/app/server/data
+    networks:
+      - app_network
+#
+#  cloudflared:
+#    image: cloudflare/cloudflared:latest
+#    container_name: cloudflared
+#    restart: unless-stopped
+#    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+#    depends_on:
+#      - web-client
+#      - gateway-service
+#    networks:
+#      - app_network
+
+
+volumes:
+  seq_data:
+#  prometheus_data:
+#  grafana_data:
+  postgres_lite_pgdata:
+  redis:
+  freellmapi_data:
+
+networks:
+  app_network:
+    driver: bridge
